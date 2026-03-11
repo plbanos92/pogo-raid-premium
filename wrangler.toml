@@ -1,6 +1,6 @@
 # Minimal Wrangler configuration for Cloudflare Pages
 # Replace "your-account-id" with your Cloudflare account ID or leave blank and run `wrangler login`.
-account_id = "plbanos92"
+account_id = "40fa129038c8d86d0bfb504489b3c587"
 name = "pogo-raid-premium"
 compatibility_date = "2026-03-11"
 
