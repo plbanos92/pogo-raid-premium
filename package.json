@@ -7,8 +7,5 @@
     "dev": "wrangler pages dev ./dist",
     "start": "wrangler pages dev ./dist",
     "deploy": "wrangler pages deploy ./ --project-name pogo-raid-premium"
-  },
-  "devDependencies": {
-    "@cloudflare/wrangler": "^3.21.0"
   }
 }
