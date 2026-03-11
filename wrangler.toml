@@ -1,8 +1,11 @@
 # Minimal Wrangler configuration for Cloudflare Pages
 # Replace "your-account-id" with your Cloudflare account ID or leave blank and run `wrangler login`.
 account_id = "plbanos92"
-project_name = "pogo-raid-premium"
+name = "pogo-raid-premium"
 compatibility_date = "2026-03-11"
+
+[assets]
+directory = "./dist"
 
 # For most static Pages sites this simple config is enough. If you add Functions or Workers,
 # update this file according to the Wrangler docs: https://developers.cloudflare.com/pages/
