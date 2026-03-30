@@ -1198,7 +1198,7 @@
     qs("queuesContent").addEventListener("click", function (e) {
       var origin = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
       if (!origin || typeof origin.closest !== "function") return;
-      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]");
+      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]") || origin.closest("[data-rejoin-boss]") || origin.closest("[data-delete-queue]") || origin.closest("[data-delete-lobby]");
       if (!target) return;
 
       // Handle "Find Raids" / "Host Raid" nav buttons in empty state
@@ -1301,6 +1301,56 @@
           if (err && err.status === 401) { handleSessionExpiry(); return; }
           setMessage("Finish failed: " + err.message, "error");
           return refreshData().catch(function () {});
+        }).finally(function () { setLoading(false); });
+        return;
+      }
+
+      var deleteLobby = target.getAttribute("data-delete-lobby");
+      if (deleteLobby) {
+        if (!window.confirm("Cancel this raid?\n\nPlayers still waiting will be moved to another lobby if one is available.")) return;
+        setLoading(true);
+        api.cancelRaid(deleteLobby).then(function () {
+          showToast("Raid cancelled.", "success");
+          store.setState({ managingLobby: null, lobbyQueues: [], openLobbyQrs: {}, lobbyInfoOpen: {} });
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          showToast("Cancel raid failed: " + err.message, "error");
+          return refreshData().catch(function () {});
+        }).finally(function () { setLoading(false); });
+        return;
+      }
+
+      // Done-state actions
+      var rejoinBossId = target.getAttribute("data-rejoin-boss");
+      var cleanupQueueId = target.getAttribute("data-cleanup-queue");
+      var deleteQueueId = target.getAttribute("data-delete-queue");
+
+      if (rejoinBossId) {
+        setLoading(true);
+        var cleanupFirst = cleanupQueueId
+          ? api.deleteQueueEntry(cleanupQueueId).catch(function () {})
+          : Promise.resolve();
+        cleanupFirst.then(function () {
+          return api.joinBossQueue(rejoinBossId, "Rejoined from web app");
+        }).then(function () {
+          showToast("Joined the queue!", "success");
+          return refreshData().then(function () { switchView("queues"); });
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          setMessage("Requeue failed: " + err.message, "error");
+          return refreshData().catch(function () {});
+        }).finally(function () { setLoading(false); });
+        return;
+      }
+
+      if (deleteQueueId) {
+        setLoading(true);
+        api.deleteQueueEntry(deleteQueueId).then(function () {
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          setMessage("Delete failed: " + err.message, "error");
         }).finally(function () { setLoading(false); });
         return;
       }

@@ -269,7 +269,8 @@ test("initQueueActions handles all queue data-attributes from views", () => {
     "data-finish-raiding", "data-manage-lobby", "data-close-lobby",
     "data-start-raid", "data-host-finish", "data-copy-fc",
     "data-toggle-lobby-qr", "data-toggle-all-lobby-qrs",
-    "data-toggle-lobby-info"
+    "data-toggle-lobby-info",
+    "data-rejoin-boss", "data-delete-queue", "data-delete-lobby"
   ];
 
   queueAttributes.forEach(function (attr) {
@@ -336,6 +337,7 @@ test("API client exposes all methods called by app.js and views", () => {
     "expireStaleInvites", "startRaid", "checkHostInactivity",
     "listRaidQueue", "getRaidHostProfile",
     "finishRaiding", "hostFinishRaiding",
+    "cancelRaid", "deleteQueueEntry",
     "getMyProfile", "ensureMyProfile", "updateMyProfile",
     "getMyAccountStats",
     "getVipStatus", "activateVip", "deactivateVip",

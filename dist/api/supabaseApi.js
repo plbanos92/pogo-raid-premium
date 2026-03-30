@@ -149,6 +149,17 @@
           }
         });
       },
+      deleteQueueEntry: function (queueId) {
+        return request("/rest/v1/raid_queues?id=eq." + encodeURIComponent(queueId), {
+          method: "DELETE"
+        });
+      },
+      cancelRaid: function (raidId) {
+        return request("/rest/v1/rpc/host_cancel_raid", {
+          method: "POST",
+          body: { p_raid_id: raidId }
+        });
+      },
       leaveQueue: function (queueId, note) {
         return request("/rest/v1/rpc/leave_queue_and_promote", {
           method: "POST",

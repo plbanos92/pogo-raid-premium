@@ -351,6 +351,7 @@
 
           if (!hostDone) {
             rp.push('  <button class="btn-start-raid" data-host-finish="' + escapeHtml(h.id) + '" type="button">' + icon('check', 16) + ' Finish Raiding</button>');
+            rp.push('  <button class="btn-delete-lobby" data-delete-lobby="' + escapeHtml(h.id) + '" type="button">' + icon('trash', 14) + ' Cancel Raid</button>');
           } else {
             rp.push('  <div class="host-done-msg">' + icon('checkCircle', 16) + ' You finished raiding');
             if (raidingCount > 0) {
@@ -452,6 +453,8 @@
         if (confirmedCount > 0) {
           lp.push('  <button class="btn-start-raid" data-start-raid="' + escapeHtml(h.id) + '" type="button">' + icon('users', 16) + ' Friend request sent to everyone</button>');
         }
+
+        lp.push('  <button class="btn-delete-lobby" data-delete-lobby="' + escapeHtml(h.id) + '" type="button">' + icon('trash', 14) + ' Cancel Raid</button>');
 
         lp.push('</div>');
         html.push(lp.join('\n'));
@@ -650,6 +653,15 @@
 
         if (q.status === 'raiding') {
           c.push('<button class="btn-start-raid" data-finish-raiding="' + escapeHtml(q.id) + '" type="button">' + icon('checkCircle', 16) + ' Finish Raiding</button>');
+        }
+
+        if (q.status === 'done') {
+          c.push('<div class="queue-action-row">');
+          if (rb && rb.id) {
+            c.push('<button class="btn-primary" style="flex:1" data-rejoin-boss="' + escapeHtml(String(rb.id)) + '" data-cleanup-queue="' + escapeHtml(q.id) + '" type="button">' + icon('refreshCw', 16) + ' Raid this pokemon again</button>');
+          }
+          c.push('<button class="btn-leave-queue" data-delete-queue="' + escapeHtml(q.id) + '" type="button" title="Remove from list">' + icon('xCircle', 18) + '</button>');
+          c.push('</div>');
         }
 
         if (hasConflict) {
