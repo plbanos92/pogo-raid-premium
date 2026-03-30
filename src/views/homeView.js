@@ -57,6 +57,7 @@
         return raid.host_user_id !== userId;
       });
       var myQueued = queues.some(function (queue) {
+        if (queue.boss_id === boss.id) return true;
         var raid = Array.isArray(queue.raids) ? queue.raids[0] : queue.raids;
         return raid && raid.raid_boss_id === boss.id;
       });

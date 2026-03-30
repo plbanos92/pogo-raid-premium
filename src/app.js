@@ -1036,7 +1036,7 @@
           .catch(function (err) {
             if (err && err.status === 401) throw err;
             var fallback = findFallbackRaidIdByBossId(vipDirect);
-            if (!fallback) throw new Error('No active raid available for this boss');
+            if (!fallback) throw err;
             return directApi.joinRaidQueue(fallback, 'Joined VIP queue');
           })
           .then(function () {
@@ -1079,7 +1079,7 @@
         .catch(function (err) {
           if (err && err.status === 401) throw err;
           var fallback = findFallbackRaidIdByBossId(joinBoss);
-          if (!fallback) throw new Error("No active raid available for this boss");
+          if (!fallback) throw err;
           return api.joinRaidQueue(fallback, useVip ? "Joined VIP queue" : "Joined queue");
         })
         .then(function () {

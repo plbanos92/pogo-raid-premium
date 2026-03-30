@@ -473,6 +473,13 @@
       queues.forEach(function (q) {
         var raid = Array.isArray(q.raids) ? q.raids[0] : q.raids;
         var rb = raid && raid.raid_bosses ? (Array.isArray(raid.raid_bosses) ? raid.raid_bosses[0] : raid.raid_bosses) : null;
+
+        // Boss-level entries (no raid assigned yet): look up boss from state
+        if (!rb && q.boss_id) {
+          var raidBosses = Array.isArray(state.raidBosses) ? state.raidBosses : [];
+          rb = raidBosses.find(function (b) { return b.id === q.boss_id; }) || null;
+        }
+
         var bossName = (rb && rb.name) || 'Unknown';
         var imgSrc = getBossDisplayImage(rb || { name: bossName });
         var isVipLive = !!state.isVip;
@@ -486,6 +493,32 @@
 
         var c = [];
         c.push('<div class="queue-card' + (q.status === 'invited' ? ' queue-card-invited' : '') + (q.status === 'confirmed' ? ' queue-card-confirmed' : '') + (q.status === 'raiding' ? ' queue-card-raiding' : '') + (q.status === 'done' ? ' queue-card-done' : '') + '">');
+
+        // Boss-level entry (waiting for a host)
+        if (!q.raid_id) {
+          c.push('<div class="queue-card-header">');
+          c.push('  <img src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(bossName) + '">');
+          c.push('  <div class="queue-card-hinfo">');
+          c.push('    <h3>' + escapeHtml(bossName) + '</h3>');
+          if (joinedTime) c.push('    <p>Joined ' + escapeHtml(joinedTime) + '</p>');
+          c.push('  </div>');
+          if (isVipQ) {
+            c.push('  <div class="queue-card-icons">');
+            c.push('    <div class="vip-crown-badge" aria-label="VIP">' +
+              icon('crown', 20) +
+              '<span class="vip-crown-sparkle vip-crown-sparkle-1"></span>' +
+              '<span class="vip-crown-sparkle vip-crown-sparkle-2"></span>' +
+              '<span class="vip-crown-sparkle vip-crown-sparkle-3"></span>' +
+            '</div>');
+            c.push('  </div>');
+          }
+          c.push('</div>');
+          c.push('<div class="alert-info">' + icon('clock', 18) + ' <div><strong>Waiting for a host</strong><p>You\'ll be automatically matched when someone hosts this raid.</p></div></div>');
+          c.push('<button class="btn-leave-queue-full" data-leave="' + escapeHtml(q.id) + '" type="button">' + icon('xCircle', 18) + ' Leave Queue</button>');
+          c.push('</div>');
+          html.push(c.join('\n'));
+          return;
+        }
 
         if (q.status === 'invited') {
           var inviteWindowSeconds = (state.appConfig || {}).invite_window_seconds || 60;

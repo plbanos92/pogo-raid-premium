@@ -63,7 +63,7 @@
         });
       },
       listMyQueues: function (userId) {
-        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,raids(raid_boss_id,location_name,start_time,end_time,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
+        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,boss_id,raids!left(raid_boss_id,location_name,start_time,end_time,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
       },
       listMyHostedRaids: function (userId) {
         return request("/rest/v1/raids?host_user_id=eq." + encodeURIComponent(userId) + "&is_active=eq.true&select=id,raid_boss_id,location_name,capacity,friend_code,created_at,last_host_action_at,host_finished_at,status,raid_bosses(id,name,tier,pokemon_id,image_url)&order=created_at.desc");
