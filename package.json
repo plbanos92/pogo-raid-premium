@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "build": "node ./scripts/build.js",
-    "dev": "wrangler pages dev ./dist",
-    "start": "wrangler pages dev ./dist",
-    "deploy": "wrangler pages deploy ./ --project-name pogo-raid-premium"
+    "check:aliases": "node -e \"const fs=require('fs'); const src=fs.readFileSync('src/app.js','utf8'); const aliasPattern=/\\bvar\\s+\\w+\\s*=\\s*AppHtml\\.\\w+\\s*(?:;|$)/m; if (aliasPattern.test(src)) { console.error('Alias check failed: found AppHtml helper alias assignment in src/app.js'); process.exit(1); } console.log('Alias check passed.');\"",
+    "dev": "npm run build && npx wrangler dev",
+    "start": "npm run build && npx wrangler dev",
+    "deploy": "npm run build && npx wrangler deploy",
+    "test": "npm run test:unit",
+    "test:unit": "node --test tests/unit/**/*.test.cjs",
+    "test:integration": "node --test tests/integration/**/*.test.cjs"
   }
 }

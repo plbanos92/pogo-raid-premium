@@ -1,21 +1,227 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pogo Raid Premium - Cloudflare Pages</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RaidSync — Pokémon GO Raid Queue</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-  <header>
-    <h1>Pogo Raid Premium</h1>
-  </header>
-  <main>
-    <p>Cloudflare Pages boilerplate — static site ready to deploy.</p>
-    <p>Modify files in this folder and deploy with Cloudflare Pages or run locally with Wrangler.</p>
+
+  <!-- ═══ Page load progress bar ═══ -->
+  <div id="pageLoader" class="page-loader"></div>
+
+  <!-- ═══ Navbar ═══ -->
+  <nav class="navbar" id="navbar">
+    <div class="navbar-inner">
+      <button class="navbar-hamburger" id="drawerMenuBtn" aria-label="Open menu" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+      </button>
+      <button class="navbar-logo" data-view="home" type="button">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><path d="M13 19l6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></svg>
+        </div>
+        <span>RaidSync</span>
+      </button>
+
+      <div class="navbar-links" id="navLinks">
+        <button class="nav-link active" data-view="home" type="button">
+          <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><path d="M13 19l6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></svg>
+          </div>
+          <span class="nav-label">Raid Bosses</span>
+          <div class="active-indicator"></div>
+        </button>
+        <button class="nav-link" data-view="host" type="button">
+          <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+          </div>
+          <span class="nav-label">Host Raid</span>
+          <div class="active-indicator"></div>
+        </button>
+        <button class="nav-link" data-view="queues" type="button" id="queuesNavBtn">
+          <div class="nav-icon" id="queuesNavIcon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+          </div>
+          <span class="nav-label">My Queues</span>
+          <div class="active-indicator"></div>
+        </button>
+        <button class="nav-link nav-link-vip" data-view="vip" type="button" id="vipNavLink">
+          <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5.21 16.5h13.58"/></svg>
+          </div>
+          <span class="nav-label">VIP Status</span>
+          <div class="vip-sparkles" aria-hidden="true">
+            <span class="sparkle s1"></span><span class="sparkle s2"></span><span class="sparkle s3"></span><span class="sparkle s4"></span><span class="sparkle s5"></span><span class="sparkle s6"></span>
+          </div>
+          <div class="active-indicator"></div>
+        </button>
+        <button class="nav-link" data-view="account" type="button" id="accountNavLink">
+          <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <span class="nav-label">Account</span>
+          <div class="active-indicator"></div>
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ═══ Side Drawer ═══ -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <span class="drawer-title">Menu</span>
+      <button class="drawer-close" id="drawerCloseBtn" aria-label="Close menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <nav class="drawer-nav" id="drawerNav">
+      <button class="drawer-link" data-view="account" type="button" id="drawerAccountLink">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Account</span>
+      </button>
+      <button class="drawer-link hidden" data-view="admin" type="button" id="drawerAdminLink">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Admin</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ═══ Main Content ═══ -->
+  <main class="main-content">
+
+
+    <!-- Account View -->
+    <section id="accountView" class="view">
+      <div id="accountContent" class="account-container"></div>
+    </section>
+
+    <!-- Home View -->
+    <section id="homeView" class="view active">
+      <div class="view-header">
+        <div>
+          <div class="view-title-wrap">
+            <div class="view-title-row">
+              <span class="view-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><path d="M13 19l6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></svg></span>
+              <h1 class="view-title">Active Raid Bosses</h1>
+            </div>
+            <div class="view-title-accent"></div>
+          </div>
+          <p class="view-subtitle">Join a queue to be matched with a host.</p>
+        </div>
+        <div class="search-bar">
+          <div class="search-input-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="bossSearch" class="search-input" type="text" placeholder="Search bosses..." autocomplete="off">
+          </div>
+          <button class="filter-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="activeRaids" class="boss-grid"></div>
+    </section>
+
+    <!-- Host View -->
+    <section id="hostView" class="view">
+      <div class="host-container" id="hostContent">
+        <div class="view-header" style="margin-bottom:2rem">
+          <div>
+            <div class="view-title-wrap">
+              <div class="view-title-row">
+                <span class="view-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg></span>
+                <h1 class="view-title">Host a Raid</h1>
+              </div>
+              <div class="view-title-accent"></div>
+            </div>
+            <p class="view-subtitle">Invite players from the queue to join your raid lobby.</p>
+          </div>
+        </div>
+        <form id="hostForm" class="host-form">
+          <div class="form-group">
+            <label class="form-group-label">Gym Screenshot (Optional)</label>
+            <div class="upload-area">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+              <p class="upload-title">Click to upload or drag and drop</p>
+              <p class="upload-hint">Auto-detects boss and weather boost</p>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-group-label">Select Raid Boss</label>
+            <select id="hostBossSelect" class="form-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-group-label">
+              Your Trainer Code
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+            </label>
+            <input id="hostFriendCode" class="trainer-code-input" type="text" placeholder="0000 0000 0000" maxlength="14" required>
+          </div>
+          <div class="form-group">
+            <div class="range-header">
+              <label class="form-group-label">Available Invites</label>
+              <span class="range-value" id="hostSpotsValue">5</span>
+            </div>
+            <input id="hostSpots" class="range-input" type="range" min="1" max="5" value="5">
+            <div class="range-labels">
+              <span>1 Player</span>
+              <span id="hostSpotsMax">5 Players</span>
+            </div>
+            <p class="range-vip-nudge hidden" id="hostVipNudge">
+              <a data-view="vip" href="#">Upgrade to VIP</a> to invite up to <span id="hostVipCapLabel">10</span> players.
+            </p>
+          </div>
+          <div style="padding-top:1rem">
+            <button class="host-submit-btn" type="submit" id="hostSubmitBtn" disabled>Start Hosting</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Queues View -->
+    <section id="queuesView" class="view">
+      <div id="queuesContent"></div>
+    </section>
+
+    <!-- VIP View -->
+    <section id="vipView" class="view">
+      <div id="vipContent" class="vip-container"></div>
+    </section>
+
+    <!-- Admin View -->
+    <section id="adminView" class="view">
+      <div id="adminContent"></div>
+    </section>
+
+    <!-- Sync Footer -->
+    <div class="sync-footer hidden" id="syncFooter"></div>
+
   </main>
-  <footer>
-    <p>&copy; Pogo Raid Premium</p>
-  </footer>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="assets/qrcode.min.js"></script>
+  <script src="constants.js"></script>
+  <script src="config.js"></script>
+  <script src="utils/html.js"></script>
+  <script src="utils/time.js"></script>
+  <script src="utils/conflictDetection.js"></script>
+  <script src="utils/queueActions.js"></script>
+  <script src="utils/predicates.js"></script>
+  <script src="state/store.js"></script>
+  <script src="api/supabaseApi.js"></script>
+  <script src="views/homeView.js"></script>
+  <script src="views/hostView.js"></script>
+  <script src="views/vipView.js"></script>
+  <script src="views/accountView.js"></script>
+  <script src="views/adminView.js"></script>
+  <script src="views/queuesView.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

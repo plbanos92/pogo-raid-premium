@@ -1,0 +1,77 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'assets/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  integration-tests:
+    name: Integration Tests (local Supabase)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout frontend repo
+        uses: actions/checkout@v4
+
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
+        with:
+          repository: <org>/pogo-raid-premium-backend
+          path: backend
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Start local Supabase
+        working-directory: backend
+        run: supabase start
+
+      - name: Reset local database
+        working-directory: backend
+        run: supabase db reset --local
+
+      - name: Export Supabase env vars
+        working-directory: backend
+        run: |
+          echo "LOCAL_SUPABASE_URL=http://127.0.0.1:54321" >> $GITHUB_ENV
+          ANON=$(supabase status --output json | jq -r '.anon_key')
+          SVC=$(supabase status --output json | jq -r '.service_role_key')
+          echo "LOCAL_SUPABASE_ANON_KEY=${ANON}" >> $GITHUB_ENV
+          echo "LOCAL_SUPABASE_SERVICE_ROLE_KEY=${SVC}" >> $GITHUB_ENV
+
+      - name: Run integration tests
+        run: npm run test:integration
