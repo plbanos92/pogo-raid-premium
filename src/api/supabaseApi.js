@@ -63,19 +63,10 @@
         });
       },
       listMyQueues: function (userId) {
-        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,boss_id,raids!left(raid_boss_id,location_name,start_time,end_time,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
+        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,invite_attempts,boss_id,raids!left(raid_boss_id,location_name,start_time,end_time,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
       },
       listMyHostedRaids: function (userId) {
         return request("/rest/v1/raids?host_user_id=eq." + encodeURIComponent(userId) + "&is_active=eq.true&select=id,raid_boss_id,location_name,capacity,friend_code,created_at,last_host_action_at,host_finished_at,status,raid_bosses(id,name,tier,pokemon_id,image_url)&order=created_at.desc");
-      },
-      joinRaidQueue: function (raidId, note) {
-        return request("/rest/v1/rpc/join_raid_queue", {
-          method: "POST",
-          body: {
-            p_raid_id: raidId,
-            p_note: note || "Joined from web app"
-          }
-        });
       },
       joinBossQueue: function (bossId, note) {
         return request("/rest/v1/rpc/join_boss_queue", {
@@ -193,6 +184,12 @@
           body: { p_raid_id: raidId }
         });
       },
+      touchHostActivity: function (raidId) {
+        return request("/rest/v1/rpc/touch_host_activity", {
+          method: "POST",
+          body: { p_raid_id: raidId }
+        });
+      },
       listRaidQueue: function (raidId) {
         return request("/rest/v1/rpc/list_raid_queue", {
           method: "POST",
@@ -296,7 +293,73 @@
           });
       },
       getAppConfig: function () {
-        return request("/rest/v1/app_config?id=eq.1&select=host_capacity_free,host_capacity_vip,vip_price,vip_price_period,invite_window_seconds,host_inactivity_seconds,vip_features&limit=1");
+        return request("/rest/v1/app_config?id=eq.1&select=host_capacity_free,host_capacity_vip,vip_price,vip_price_period,invite_window_seconds,host_inactivity_seconds,vip_features,realtime_slots,audit_config&limit=1");
+      },
+      getRealtimeConfig: function () {
+        return fetch('/api/realtime-config', {
+          headers: { Authorization: 'Bearer ' + (config.token || '') }
+        }).then(function (res) {
+          if (!res.ok) throw new Error('getRealtimeConfig HTTP ' + res.status);
+          return res.json();
+        });
+      },
+      claimRealtimeSlot: function () {
+        return request('/rest/v1/rpc/claim_realtime_slot', { method: 'POST', body: {} });
+      },
+      releaseRealtimeSlot: function () {
+        return request('/rest/v1/rpc/release_realtime_slot', { method: 'POST', body: {} });
+      },
+      adminUpdateRealtimeSlots: function (slots) {
+        return request('/rest/v1/rpc/admin_update_realtime_slots', {
+          method: 'POST',
+          body: { p_slots: slots }
+        });
+      },
+      adminUpdateAuditConfig: function (config) {
+        return request('/rest/v1/rpc/admin_update_audit_config', {
+          method: 'POST',
+          body: { p_config: config }
+        });
+      },
+      adminPurgeAuditTrailByEmail: function (email) {
+        return request('/rest/v1/rpc/admin_purge_audit_trail', {
+          method: 'POST',
+          body: { p_email: email }
+        });
+      },
+      adminPurgeAllAuditTrail: function () {
+        return request('/rest/v1/rpc/admin_purge_audit_trail', {
+          method: 'POST',
+          body: {}
+        });
+      },
+      getRealtimeSlotStats: function () {
+        return request('/rest/v1/rpc/get_realtime_slot_stats', { method: 'POST', body: {} });
+      },
+      openUserSession: function (userAgent, clientInfo) {
+        return request("/rest/v1/rpc/open_user_session", {
+          method: "POST",
+          body: { p_user_agent: userAgent, p_client_info: clientInfo }
+        });
+      },
+      closeUserSession: function (sessionId, reason, finalEvents) {
+        return request("/rest/v1/rpc/close_user_session", {
+          method: "POST",
+          body: {
+            p_session_id:   sessionId,
+            p_reason:       reason,
+            p_final_events: finalEvents || []
+          }
+        });
+      },
+      batchInsertSessionEvents: function (sessionId, events) {
+        return request("/rest/v1/rpc/batch_insert_session_events", {
+          method: "POST",
+          body: {
+            p_session_id: sessionId,
+            p_events:     events
+          }
+        });
       }
     };
   }

@@ -61,11 +61,14 @@ test("all core helper functions exist in app.js", () => {
     "applyHostCapacityState",
     // Queue interaction helpers
     "openManageLobby", "bindDirectManageLobbyActions",
-    "findFallbackRaidIdByBossId",
     // Misc UI helpers
     "openDrawer", "closeDrawer", "postRenderQueueEffects",
     "postRenderAccountEffects", "renderQrSvg", "formatRelativeTime",
-    "handleAuthCallback"
+    "handleAuthCallback",
+    "initRealtimeMode",
+    "teardownRealtimeMode",
+    "handleRealtimeEvent",
+    "handleRealtimeDemotion"
   ];
 
   var missing = coreFunctions.filter(function (name) {
@@ -155,7 +158,7 @@ test("refreshData 401 catch calls handleSessionExpiry", () => {
 
 test("refreshData ends with setLoading(false) in finally block", () => {
   assert.equal(
-    /\.finally\(function\s*\(\)\s*\{\s*setLoading\(false\);\s*\}\)/.test(appSource),
+    /\.finally\(function\s*\(\)\s*\{[^}]*setLoading\(false\)/.test(appSource),
     true,
     "refreshData must call setLoading(false) in .finally()"
   );
@@ -332,9 +335,9 @@ test("API client exposes all methods called by app.js and views", () => {
   var requiredMethods = [
     "listActiveRaids", "listBossQueueStats", "listRaidBosses",
     "listMyQueues", "listMyHostedRaids",
-    "joinBossQueue", "joinRaidQueue", "createRaid",
+    "joinBossQueue", "createRaid",
     "leaveQueue", "confirmInvite",
-    "expireStaleInvites", "startRaid", "checkHostInactivity",
+    "expireStaleInvites", "startRaid", "checkHostInactivity", "touchHostActivity",
     "listRaidQueue", "getRaidHostProfile",
     "finishRaiding", "hostFinishRaiding",
     "cancelRaid", "deleteQueueEntry",
@@ -392,5 +395,266 @@ test("refreshData uses loadProfileWithFallback for authenticated users", () => {
   assert.equal(
     /profilePromise\s*=\s*loadProfileWithFallback\(api,\s*state\.config\.userId\)/.test(appSource), true,
     "refreshData must use loadProfileWithFallback, not getMyProfile directly"
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 8. REALTIME API CONTRACT — new RPC methods in supabaseApi.js
+// ═══════════════════════════════════════════════════════════════
+
+test("supabaseApi exposes getRealtimeSlotStats method", () => {
+  assert.equal(
+    /getRealtimeSlotStats:\s*function/.test(apiSource), true,
+    "supabaseApi must define getRealtimeSlotStats"
+  );
+});
+
+test("supabaseApi exposes claimRealtimeSlot method", () => {
+  assert.equal(
+    /claimRealtimeSlot:\s*function/.test(apiSource), true,
+    "supabaseApi must define claimRealtimeSlot"
+  );
+});
+
+test("supabaseApi exposes releaseRealtimeSlot method", () => {
+  assert.equal(
+    /releaseRealtimeSlot:\s*function/.test(apiSource), true,
+    "supabaseApi must define releaseRealtimeSlot"
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 9. _refreshInFlight GUARD — conflict-prevention assertions
+// ═══════════════════════════════════════════════════════════════
+
+test("_refreshInFlight flag is declared before refreshData", () => {
+  assert.equal(
+    /var\s+_refreshInFlight\s*=\s*false/.test(appSource), true,
+    "_refreshInFlight must be declared as var _refreshInFlight = false"
+  );
+});
+
+test("refreshData sets _refreshInFlight = true at start", () => {
+  assert.equal(
+    /_refreshInFlight\s*=\s*true/.test(appSource), true,
+    "refreshData must set _refreshInFlight = true as its first statement"
+  );
+});
+
+test("refreshData resets _refreshInFlight = false in .finally()", () => {
+  assert.equal(
+    /\.finally\s*\([\s\S]{0,150}_refreshInFlight\s*=\s*false/.test(appSource), true,
+    "refreshData must reset _refreshInFlight in .finally() block"
+  );
+});
+
+test("handleRealtimeEvent guards against _refreshInFlight", () => {
+  assert.ok(
+    /function\s+handleRealtimeEvent\s*\(\)\s*\{[\s\S]*?_refreshInFlight/.test(appSource),
+    "handleRealtimeEvent must guard against concurrent refreshes via _refreshInFlight"
+  );
+});
+
+test("scheduleNextPoll guards syncCursorChanged branch with _refreshInFlight", () => {
+  assert.equal(
+    /syncCursorChanged[\s\S]{0,200}_refreshInFlight[^}]*scheduleNextPoll\(\)[^}]*return/.test(appSource), true,
+    "syncCursorChanged branch must check _refreshInFlight before calling refreshData"
+  );
+});
+
+test("getSyncPollInterval returns IDLE_MS when in realtime mode (C-0)", () => {
+  assert.equal(
+    /realtimeMode\s*===\s*['"]realtime['"][\s\S]{0,30}managingLobby/.test(appSource), true,
+    "getSyncPollInterval must short-circuit to IDLE_MS when realtimeMode === 'realtime' and not managingLobby"
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 11. FOOTER FRESHNESS — renderFooter called on every data sync
+//
+// Regression guard for: "Synced Ns ago" not updating when slot
+// count pill changes or a full refresh completes.
+// ═══════════════════════════════════════════════════════════════
+
+test("refreshData pipeline calls renderFooter immediately after store.setState(payload)", () => {
+  // The .then(payload) handler must call renderFooter right after persisting the payload.
+  assert.equal(
+    /store\.setState\(payload\);\s*(?:\/\/[^\n]+\n\s*)?renderFooter\(store\.getState\(\)\);/.test(appSource),
+    true,
+    "refreshData must call renderFooter(store.getState()) immediately after store.setState(payload)"
+  );
+});
+
+test("slot stats poll timer includes lastRefreshedAt on every tick", () => {
+  // The _slotStatsPollTimer callback must update lastRefreshedAt alongside realtimeSlotStats
+  // so the footer timestamp stays current even when only the slot count changes.
+  assert.equal(
+    /realtimeSlotStats:\s*stats,\s*lastRefreshedAt:\s*new Date\(\)/.test(appSource),
+    true,
+    "_slotStatsPollTimer must set lastRefreshedAt: new Date() together with realtimeSlotStats"
+  );
+});
+
+test("slot stats poll timer calls renderFooter after each stats update", () => {
+  // renderFooter must be called inside the _slotStatsPollTimer callback so the pill
+  // change is immediately reflected in the 'Synced Ns ago' text.
+  assert.equal(
+    /_slotStatsPollTimer\s*=\s*setInterval[\s\S]{0,300}renderFooter\(store\.getState\(\)\)/.test(appSource),
+    true,
+    "_slotStatsPollTimer callback must call renderFooter(store.getState()) after updating slot stats"
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 12. HEARTBEAT SELF-TERMINATION GUARD
+//
+// Regression guard for: pre-fix tabs keeping stale realtime
+// sessions alive via a baked-in JWT after sign-out, because
+// _heartbeatTimer was never cleared. The guard makes any
+// lingering heartbeat self-destruct on its next tick when the
+// store no longer reflects realtime mode.
+// ═══════════════════════════════════════════════════════════════
+
+test("heartbeat timer checks realtimeMode before firing the claim RPC", () => {
+  assert.equal(
+    /store\.getState\(\)\.realtimeMode\s*!==\s*['"]realtime['"]/.test(appSource),
+    true,
+    "_heartbeatTimer must guard against stale sessions by checking store.getState().realtimeMode !== 'realtime'"
+  );
+});
+
+test("heartbeat self-terminates by calling clearInterval(_heartbeatTimer)", () => {
+  assert.equal(
+    /store\.getState\(\)\.realtimeMode\s*!==\s*['"]realtime['"][\s\S]{0,150}clearInterval\(_heartbeatTimer\)/.test(appSource),
+    true,
+    "When realtimeMode !== 'realtime', heartbeat must call clearInterval(_heartbeatTimer)"
+  );
+});
+
+test("heartbeat self-termination nullifies the _heartbeatTimer reference", () => {
+  // Nullifying prevents a second clearInterval on a dead timer during teardownRealtimeMode.
+  assert.equal(
+    /clearInterval\(_heartbeatTimer\);\s*_heartbeatTimer\s*=\s*null/.test(appSource),
+    true,
+    "heartbeat self-termination must set _heartbeatTimer = null after clearInterval"
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 13. BFCACHE PAGESHOW RECOVERY
+//
+// Regression guard for: pressing the browser back button restores
+// the page from bfcache without re-running DOMContentLoaded, so
+// initRealtimeMode is never called and VIP users stay in polling.
+// The pageshow listener re-checks eligibility and re-initialises
+// the realtime WS on every bfcache restore.
+// ═══════════════════════════════════════════════════════════════
+
+test("pageshow event listener is registered in init", () => {
+  assert.equal(
+    /window\.addEventListener\s*\(\s*['"]pageshow['"]/.test(appSource),
+    true,
+    "init must register a window 'pageshow' event listener to handle bfcache restores"
+  );
+});
+
+test("pageshow handler is a no-op for normal (non-persisted) page loads", () => {
+  // Only bfcache restores should trigger the re-init path.
+  assert.equal(
+    /if\s*\(!e\.persisted\)\s*return/.test(appSource),
+    true,
+    "pageshow handler must return early when e.persisted === false"
+  );
+});
+
+test("pageshow handler calls refreshData to get fresh state on bfcache restore", () => {
+  assert.equal(
+    /window\.addEventListener[\s\S]{0,600}pageshow[\s\S]{0,600}refreshData\(\)/.test(appSource) ||
+    /pageshow[\s\S]{0,600}refreshData\(\)/.test(appSource),
+    true,
+    "pageshow handler must call refreshData() to fetch up-to-date VIP/slot state"
+  );
+});
+
+test("pageshow handler attempts to re-init realtime after bfcache restore", () => {
+  // Accept both: initRealtimeMode(getApi()) directly, or via a captured local 'api' variable
+  assert.equal(
+    /pageshow[\s\S]{0,800}initRealtimeMode\((?:getApi\(\)|api)\)/.test(appSource),
+    true,
+    "pageshow handler must call initRealtimeMode to upgrade eligible users from polling"
+  );
+});
+
+test("pageshow handler tears down stale realtime WS before re-initialising", () => {
+  // When page was in realtime mode at freeze time, the WS is dead after bfcache restore.
+  // Must teardown before re-init to avoid duplicate timers and orphaned slots.
+  assert.equal(
+    /pageshow[\s\S]{0,600}teardownRealtimeMode/.test(appSource),
+    true,
+    "pageshow handler must call teardownRealtimeMode for the realtime→realtime recovery path"
+  );
+});
+// ═══════════════════════════════════════════════════════════════
+// 14. VISIBILITY CHANGE RECOVERY (APP-SWITCH / SCREEN LOCK)
+//
+// Regression guard for: user switches to another app (or locks screen)
+// for >30s — the mobile OS kills the WebSocket during that time.
+// visibilitychange fires on return; pageshow does NOT. Without this
+// listener the user is stuck in dead-realtime until a hard refresh.
+// ═══════════════════════════════════════════════════════════════
+
+test("_hiddenAt variable is declared at module level in app.js", () => {
+  assert.equal(
+    /var\s+_hiddenAt\s*=\s*null/.test(appSource),
+    true,
+    "_hiddenAt must be declared at module level to track when the tab became hidden"
+  );
+});
+
+test("_recoveryInFlight variable is declared at module level in app.js", () => {
+  assert.equal(
+    /var\s+_recoveryInFlight\s*=\s*false/.test(appSource),
+    true,
+    "_recoveryInFlight must be declared at module level to prevent double-recovery races"
+  );
+});
+
+test("_recoveryWatchdog variable is declared at module level in app.js", () => {
+  assert.equal(
+    /var\s+_recoveryWatchdog\s*=\s*null/.test(appSource),
+    true,
+    "_recoveryWatchdog must be declared at module level to reset the flag if teardown hangs"
+  );
+});
+
+test("STALE_THRESHOLD_MS is declared at module level in app.js", () => {
+  assert.equal(
+    /var\s+STALE_THRESHOLD_MS\s*=\s*30000/.test(appSource),
+    true,
+    "STALE_THRESHOLD_MS must be declared at module level (not inside init) so it is auditable and testable"
+  );
+});
+
+test("visibilitychange listener is registered in app.js", () => {
+  assert.equal(
+    /document\.addEventListener\s*\(\s*['"]visibilitychange['"]/.test(appSource),
+    true,
+    "app.js must register a document 'visibilitychange' listener for app-switch recovery"
+  );
+});
+
+test("pageshow handler checks _recoveryInFlight before starting recovery", () => {
+  assert.equal(
+    /pageshow[\s\S]{0,200}_recoveryInFlight/.test(appSource),
+    true,
+    "pageshow handler must check _recoveryInFlight to avoid racing with visibilitychange recovery"
+  );
+});
+
+test("_recoveryWatchdog setTimeout is wired in app.js", () => {
+  assert.equal(
+    /_recoveryWatchdog\s*=\s*setTimeout/.test(appSource),
+    true,
+    "_recoveryWatchdog must be armed via setTimeout so the flag resets if teardown hangs on a dead network"
   );
 });

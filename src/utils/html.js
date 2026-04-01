@@ -58,6 +58,8 @@
       .replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  var HAMBURGER_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>';
+
   function viewTitleHtml(iconKey, text, opts) {
     opts = opts || {};
     var isVip = !!opts.vip;
@@ -69,6 +71,7 @@
       '  <div class="view-title-row">',
       '    <span class="view-title-icon' + iconClass + '">' + icon(iconKey, 22) + '</span>',
       '    <h1 class="view-title' + gradientClass + '">' + escapeHtml(text) + '</h1>',
+      '    <button class="navbar-hamburger" data-open-drawer aria-label="Open menu" type="button">' + HAMBURGER_SVG + '</button>',
       '  </div>',
       '  <div class="view-title-accent' + accentClass + '"></div>',
       '</div>'

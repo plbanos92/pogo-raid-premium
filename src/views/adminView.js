@@ -99,6 +99,100 @@
     ].join("\n");
   }
 
+  function renderAuditConfigPanel(state, deps) {
+    var escapeHtml = deps.escapeHtml || function (v) { return String(v || ''); };
+    var icon = deps.icon || function () { return ''; };
+    var cfg = (state.appConfig && state.appConfig.audit_config) || {};
+    var enabled = cfg.enabled !== false;
+    var flushMs = cfg.flush_interval_ms || 5000;
+    var bufMax = cfg.buffer_max || 50;
+    var cats = cfg.categories || {};
+
+    var allCategories = [
+      { key: 'session',   label: 'Session',    locked: true },
+      { key: 'error',     label: 'Error',      locked: true },
+      { key: 'ui',        label: 'UI Clicks',  hint: 'High volume' },
+      { key: 'nav',       label: 'Navigation', hint: 'High volume' },
+      { key: 'data',      label: 'Data',       hint: 'High volume' },
+      { key: 'queue',     label: 'Queue' },
+      { key: 'host',      label: 'Host' },
+      { key: 'lifecycle', label: 'Lifecycle' },
+      { key: 'realtime',  label: 'Realtime' },
+      { key: 'account',   label: 'Account' },
+      { key: 'admin',     label: 'Admin' }
+    ];
+
+    var catItems = allCategories.map(function (c) {
+      var checked = c.locked || cats[c.key] !== false;
+      var disabled = c.locked ? ' disabled' : '';
+      var hintHtml = c.locked
+        ? ' <span class="audit-cat-hint audit-cat-hint--locked">always on</span>'
+        : c.hint
+          ? ' <span class="audit-cat-hint audit-cat-hint--warn">' + escapeHtml(c.hint) + '</span>'
+          : '';
+      return '<div class="audit-cat-item">' +
+        '<input type="checkbox" id="audit_cat_' + c.key + '" name="audit_cat_' + c.key + '" value="' + c.key + '"' + (checked ? ' checked' : '') + disabled + '>' +
+        '<label for="audit_cat_' + c.key + '">' + escapeHtml(c.label) + hintHtml + '</label>' +
+        '</div>';
+    }).join('\n');
+
+    return [
+      '<div class="card" id="auditConfigCard">',
+      '  <div class="card-header">',
+      '    <h2 class="card-header-title">' + icon('shield', 16) + ' Audit Configuration</h2>',
+      '  </div>',
+      '  <div class="card-body">',
+      '    <div class="audit-master-toggle">',
+      '      <input type="checkbox" id="auditEnabledToggle"' + (enabled ? ' checked' : '') + '>',
+      '      <label for="auditEnabledToggle">Session auditing ' + (enabled ? 'enabled' : 'disabled') + '</label>',
+      '    </div>',
+      '    <div class="audit-tuning-row">',
+      '      <div class="audit-tuning-item">',
+      '        <label for="auditFlushMs">Flush interval (ms)</label>',
+      '        <input class="form-input" id="auditFlushMs" type="number" min="1000" max="60000" value="' + escapeHtml(String(flushMs)) + '">',
+      '      </div>',
+      '      <div class="audit-tuning-item">',
+      '        <label for="auditBufferMax">Buffer max</label>',
+      '        <input class="form-input" id="auditBufferMax" type="number" min="1" max="500" value="' + escapeHtml(String(bufMax)) + '">',
+      '      </div>',
+      '    </div>',
+      '    <div style="margin-bottom:0.5rem">',
+      '      <label class="form-group-label">Event categories</label>',
+      '    </div>',
+      '    <div class="audit-cat-grid">',
+      catItems,
+      '    </div>',
+      '    <button class="btn-primary" id="saveAuditConfigBtn" type="button">Save Configuration</button>',
+      '  </div>',
+      '</div>'
+    ].join('\n');
+  }
+
+  function renderAuditPurgePanel(deps) {
+    var icon = (deps && deps.icon) || function () { return ''; };
+    return [
+      '<div class="danger-zone" id="auditPurgeCard">',
+      '  <div class="danger-zone-header">' + icon('alert', 16) + ' Danger Zone</div>',
+      '  <div class="danger-zone-body">',
+      '    <div class="danger-zone-section">',
+      '      <div class="danger-zone-label">Purge by user</div>',
+      '      <div class="danger-zone-hint">Delete all audit sessions and events for a single user by email.</div>',
+      '      <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">',
+      '        <input class="form-input" id="purgeAuditEmail" type="email" placeholder="user@example.com" style="flex:1;min-width:0">',
+      '        <button class="btn-danger" id="purgeUserAuditBtn" type="button" disabled>Purge User</button>',
+      '      </div>',
+      '    </div>',
+      '    <hr class="danger-zone-divider">',
+      '    <div class="danger-zone-section">',
+      '      <div class="danger-zone-label">Purge all users</div>',
+      '      <div class="danger-zone-hint">Permanently delete the entire audit trail for every user. This cannot be undone.</div>',
+      '      <button class="btn-danger" id="purgeAllAuditBtn" type="button">Purge ALL Audit Trail</button>',
+      '    </div>',
+      '  </div>',
+      '</div>'
+    ].join('\n');
+  }
+
   AppViews.renderAdmin = function renderAdmin(state, deps) {
     deps = deps || {};
     state = state || {};
@@ -184,13 +278,44 @@
       '</div>'
     ].join("\n") : '';
 
+    var realtimeSlots = state.appConfig ? (typeof state.appConfig.realtime_slots === 'number' ? state.appConfig.realtime_slots : '') : '';
+    var activeTab = state.adminTab || 'bosses';
+
     updateRenderedHtml(el, [
       '<div class="view-header">',
-      viewTitleHtml('shield', 'Admin: Raid Bosses'),
-      '  <button class="btn-primary admin-toggle-add" id="adminToggleAdd" type="button">' + icon('plus', 16) + ' Add Boss</button>',
+      viewTitleHtml('shield', 'Admin'),
       '</div>',
+      '<div class="admin-tab-bar">',
+      '  <button class="admin-tab' + (activeTab === 'bosses' ? ' active' : '') + '" data-admin-tab="bosses">Bosses</button>',
+      '  <button class="admin-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-admin-tab="settings">App Settings</button>',
+      '  <button class="admin-tab' + (activeTab === 'audit' ? ' active' : '') + '" data-admin-tab="audit">Audit</button>',
+      '</div>',
+      '<div class="admin-tab-panel' + (activeTab === 'bosses' ? ' active' : '') + '">',
+      '  <button class="btn-primary admin-toggle-add" id="adminToggleAdd" type="button">' + icon('plus', 16) + ' Add Boss</button>',
       addFormHtml,
-      '<div id="adminBossList">' + listHtml + '</div>'
+      '  <div id="adminBossList">' + listHtml + '</div>',
+      '</div>',
+      '<div class="admin-tab-panel' + (activeTab === 'settings' ? ' active' : '') + '">',
+      '  <div class="admin-settings-card card">',
+      '    <div class="card-header">',
+      '      <h2 class="card-header-title">' + icon('zap', 16) + ' App Settings</h2>',
+      '    </div>',
+      '    <div class="card-body">',
+      '      <div class="form-group">',
+      '        <label class="form-group-label" for="realtimeSlotsInput">Realtime Slots</label>',
+      '        <p class="form-group-hint">Capacity ceiling for concurrent realtime WebSocket sessions. Set to 0 to disable realtime for all users.</p>',
+      '        <div class="form-row form-row--inline">',
+      '          <input class="form-input" id="realtimeSlotsInput" type="number" min="0" max="9999" value="' + escapeHtml(String(realtimeSlots)) + '" placeholder="150" style="max-width:120px">',
+      '          <button class="btn-primary" id="saveRealtimeSlotsBtn" type="button">Save</button>',
+      '        </div>',
+      '      </div>',
+      '    </div>',
+      '  </div>',
+      '</div>',
+      '<div class="admin-tab-panel' + (activeTab === 'audit' ? ' active' : '') + '" id="admin-panel-audit">',
+      renderAuditConfigPanel(state, { escapeHtml: escapeHtml, icon: icon }),
+      renderAuditPurgePanel({ icon: icon }),
+      '</div>'
     ].join("\n"));
   };
 })(window);

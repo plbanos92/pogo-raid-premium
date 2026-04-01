@@ -17,9 +17,6 @@
   <!-- ═══ Navbar ═══ -->
   <nav class="navbar" id="navbar">
     <div class="navbar-inner">
-      <button class="navbar-hamburger" id="drawerMenuBtn" aria-label="Open menu" type="button">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
-      </button>
       <button class="navbar-logo" data-view="home" type="button">
         <div class="logo-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><path d="M13 19l6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></svg>
@@ -67,6 +64,7 @@
           <div class="active-indicator"></div>
         </button>
       </div>
+      <button class="navbar-hamburger hamburger-navbar" data-open-drawer aria-label="Open menu" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>
 
     </div>
   </nav>
@@ -108,8 +106,7 @@
           <div class="view-title-wrap">
             <div class="view-title-row">
               <span class="view-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><path d="M13 19l6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></svg></span>
-              <h1 class="view-title">Active Raid Bosses</h1>
-            </div>
+              <h1 class="view-title">Active Raid Bosses</h1>              <button class="navbar-hamburger" data-open-drawer aria-label="Open menu" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>            </div>
             <div class="view-title-accent"></div>
           </div>
           <p class="view-subtitle">Join a queue to be matched with a host.</p>
@@ -130,13 +127,13 @@
     <!-- Host View -->
     <section id="hostView" class="view">
       <div class="host-container" id="hostContent">
+        <div id="hostSuccessSlot"></div>
         <div class="view-header" style="margin-bottom:2rem">
           <div>
             <div class="view-title-wrap">
               <div class="view-title-row">
                 <span class="view-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg></span>
-                <h1 class="view-title">Host a Raid</h1>
-              </div>
+                <h1 class="view-title">Host a Raid</h1>                <button class="navbar-hamburger" data-open-drawer aria-label="Open menu" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>              </div>
               <div class="view-title-accent"></div>
             </div>
             <p class="view-subtitle">Invite players from the queue to join your raid lobby.</p>
@@ -206,6 +203,11 @@
   <!-- Toast notifications -->
   <div class="toast-container" id="toastContainer"></div>
 
+  <!-- Global modal overlay -->
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true">
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
   <script src="assets/qrcode.min.js"></script>
   <script src="constants.js"></script>
   <script src="config.js"></script>
@@ -214,14 +216,18 @@
   <script src="utils/conflictDetection.js"></script>
   <script src="utils/queueActions.js"></script>
   <script src="utils/predicates.js"></script>
+  <script src="utils/realtimeUtils.js"></script>
   <script src="state/store.js"></script>
   <script src="api/supabaseApi.js"></script>
+  <script src="utils/sessionAudit.js"></script>
   <script src="views/homeView.js"></script>
   <script src="views/hostView.js"></script>
   <script src="views/vipView.js"></script>
   <script src="views/accountView.js"></script>
   <script src="views/adminView.js"></script>
   <script src="views/queuesView.js"></script>
+  <script src="assets/realtime.min.js"></script>
+  <script src="realtime/realtimeClient.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

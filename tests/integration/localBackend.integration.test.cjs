@@ -106,6 +106,24 @@ async function createRaid(token, hostUserId, raidBossId) {
   return raid[0].id;
 }
 
+// Helper: elevate a user to admin via service-role upsert on user_profiles
+async function adminSetUserIsAdmin(userId) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify({ auth_id: userId, is_admin: true })
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`adminSetUserIsAdmin failed (HTTP ${res.status}): ${body}`);
+  }
+}
+
 const testFn = requiredEnvMissing() ? test.skip : test;
 testFn("local backend integration: host+joiner lobby-sync regression (Phase 3)", async () => {
   // 1. Create host and joiner users
@@ -197,4 +215,138 @@ testFn("local backend integration: auth, read raids, join queue", async () => {
 
   const myQueues = await callRest(`/rest/v1/raid_queues?user_id=eq.${encodeURIComponent(userId)}&select=id,raid_id,status`, token);
   assert.ok(myQueues.some((row) => row.raid_id === SEED_RAID_ID), "my queues should contain joined seed raid");
+});
+
+// ─────────────────────────────────────────────────────────────
+// Phase 8: Realtime slot lifecycle integration tests
+// Requires: realtime sessions migration applied to local DB
+// ─────────────────────────────────────────────────────────────
+
+testFn("realtime: get baseline slot stats", async () => {
+  const ts = Date.now();
+  await adminCreateUser(`rt-stats-${ts}@example.test`, "TestPass123!");
+  const signin = await signIn(`rt-stats-${ts}@example.test`, "TestPass123!");
+  const token = signin.access_token;
+
+  const stats = await callRest("/rest/v1/rpc/get_realtime_slot_stats", token, {
+    method: "POST",
+    body: {}
+  });
+
+  assert.ok(typeof stats.used === "number" && stats.used >= 0,
+    "used must be a non-negative number");
+  assert.equal(stats.total, 10,
+    "total must equal 10 (default realtime_slots in seed.sql)");
+});
+
+testFn("realtime: claim slot returns granted=true and session_id", async () => {
+  const ts = Date.now();
+  await adminCreateUser(`rt-claim-${ts}@example.test`, "TestPass123!");
+  const signin = await signIn(`rt-claim-${ts}@example.test`, "TestPass123!");
+  const token = signin.access_token;
+
+  const result = await callRest("/rest/v1/rpc/claim_realtime_slot", token, {
+    method: "POST",
+    body: {}
+  });
+
+  assert.equal(result.granted, true, "granted must be true when slots are available");
+  assert.equal(result.mode, "realtime", "mode must be 'realtime' when slots are available");
+
+  // Cleanup
+  await callRest("/rest/v1/rpc/release_realtime_slot", token, { method: "POST", body: {} });
+});
+
+testFn("realtime: stats increment after claim", async () => {
+  const ts = Date.now();
+  await adminCreateUser(`rt-count-${ts}@example.test`, "TestPass123!");
+  const signin = await signIn(`rt-count-${ts}@example.test`, "TestPass123!");
+  const token = signin.access_token;
+
+  const before = await callRest("/rest/v1/rpc/get_realtime_slot_stats", token, {
+    method: "POST",
+    body: {}
+  });
+  await callRest("/rest/v1/rpc/claim_realtime_slot", token, { method: "POST", body: {} });
+  const after = await callRest("/rest/v1/rpc/get_realtime_slot_stats", token, {
+    method: "POST",
+    body: {}
+  });
+
+  assert.equal(after.used, before.used + 1,
+    "used must increment by exactly 1 after a new slot is claimed");
+
+  // Cleanup
+  await callRest("/rest/v1/rpc/release_realtime_slot", token, { method: "POST", body: {} });
+});
+
+testFn("realtime: release slot decrements used", async () => {
+  const ts = Date.now();
+  await adminCreateUser(`rt-release-${ts}@example.test`, "TestPass123!");
+  const signin = await signIn(`rt-release-${ts}@example.test`, "TestPass123!");
+  const token = signin.access_token;
+
+  await callRest("/rest/v1/rpc/claim_realtime_slot", token, { method: "POST", body: {} });
+  const afterClaim = await callRest("/rest/v1/rpc/get_realtime_slot_stats", token, {
+    method: "POST",
+    body: {}
+  });
+  await callRest("/rest/v1/rpc/release_realtime_slot", token, { method: "POST", body: {} });
+  const afterRelease = await callRest("/rest/v1/rpc/get_realtime_slot_stats", token, {
+    method: "POST",
+    body: {}
+  });
+
+  assert.equal(afterRelease.used, afterClaim.used - 1,
+    "used must decrement by exactly 1 after releasing a slot");
+});
+
+testFn("realtime: release is idempotent (double-release no error)", async () => {
+  const ts = Date.now();
+  await adminCreateUser(`rt-idem-${ts}@example.test`, "TestPass123!");
+  const signin = await signIn(`rt-idem-${ts}@example.test`, "TestPass123!");
+  const token = signin.access_token;
+
+  await callRest("/rest/v1/rpc/claim_realtime_slot", token, { method: "POST", body: {} });
+  await callRest("/rest/v1/rpc/release_realtime_slot", token, { method: "POST", body: {} });
+  // Second release on an already-released session must not throw
+  await callRest("/rest/v1/rpc/release_realtime_slot", token, { method: "POST", body: {} });
+  // Reaching here without error is the assertion
+});
+
+testFn("realtime: slots=0 disables claiming (admin control)", async () => {
+  const ts = Date.now();
+  const adminRaw = await adminCreateUser(`rt-admin-${ts}@example.test`, "TestPass123!");
+  await adminCreateUser(`rt-user-${ts}@example.test`, "TestPass123!");
+  await adminSetUserIsAdmin(adminRaw.id);
+
+  const adminSignin = await signIn(`rt-admin-${ts}@example.test`, "TestPass123!");
+  const userSignin = await signIn(`rt-user-${ts}@example.test`, "TestPass123!");
+  const adminToken = adminSignin.access_token;
+  const userToken = userSignin.access_token;
+
+  try {
+    // Admin disables realtime globally
+    await callRest("/rest/v1/rpc/admin_update_realtime_slots", adminToken, {
+      method: "POST",
+      body: { p_slots: 0 }
+    });
+
+    // Regular user attempts to claim — must be denied
+    const result = await callRest("/rest/v1/rpc/claim_realtime_slot", userToken, {
+      method: "POST",
+      body: {}
+    });
+
+    assert.equal(result.granted, false,
+      "granted must be false when realtime_slots = 0");
+    assert.equal(result.mode, "polling",
+      "mode must be 'polling' when realtime is administratively disabled");
+  } finally {
+    // Always restore — must not leave realtime disabled for subsequent tests
+    await callRest("/rest/v1/rpc/admin_update_realtime_slots", adminToken, {
+      method: "POST",
+      body: { p_slots: 10 }
+    });
+  }
 });

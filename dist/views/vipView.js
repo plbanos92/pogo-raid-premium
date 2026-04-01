@@ -38,6 +38,7 @@
 
     updateRenderedHtml(wrap, [
       '<div class="vip-header">',
+      '  <button class="navbar-hamburger vip-header-hamburger" data-open-drawer aria-label="Open menu" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>',
       '  <div class="vip-crown-wrap">' + icon("crown", 40) + '</div>',
       '  <h1 class="vip-page-title">RaidSync <span class="vip-gradient">VIP</span></h1>',
       '  <p class="vip-page-desc">Skip the lines, match faster, and dominate raids with exclusive features tailored for dedicated raiders.</p>',

@@ -24,6 +24,22 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/realtime-config' && request.method === 'GET') {
+      const auth = request.headers.get('Authorization');
+      if (!auth || !auth.startsWith('Bearer ')) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      return Response.json(
+        { url: env.SUPABASE_URL, anonKey: env.SUPABASE_ANON_KEY },
+        {
+          headers: {
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }
+      );
+    }
+
     // Strip /api prefix → Supabase path  (/api/auth/v1/... → /auth/v1/...)
     const supabasePath = url.pathname.slice(4);
 

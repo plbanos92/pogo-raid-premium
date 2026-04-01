@@ -273,40 +273,35 @@
     }
 
     if (hosts.length > 0) {
+      var isHostVipLive = !!state.isVip;
+      var isHostVipRetrying = isHostVipLive && !!state.realtimeRetrying;
+      var hostPillMode = (state.realtimeMode === 'realtime' || isHostVipRetrying) ? 'realtime' : 'polling';
+      var hostSyncPill = '<span class="sync-pill sync-pill--' + hostPillMode + '">' +
+        (hostPillMode === 'realtime'
+          ? ('<span class="live-icon-wrap' + (isHostVipLive ? ' live-icon-vip' : '') + '">' +
+              icon('zap', 12) +
+              (isHostVipLive && !isHostVipRetrying ? '<span class="live-gold-aura"></span>' : '') +
+            '</span> Live' +
+            '<span class="slot-stats-label">' +
+            (state.realtimeMode === 'realtime' && global.RealtimeUtils ? global.RealtimeUtils.formatRealtimeSlotStats(state.realtimeSlotStats) : '') +
+            '</span>')
+          : icon('clock', 12) + ' Polling') +
+        '</span>';
+
       html.push('<section style="margin-bottom:2rem">');
-      html.push('  <h2 class="section-title">Hosted Lobbies <span class="section-count teal">' + hosts.length + ' Active</span></h2>');
+      html.push('  <h2 class="section-title">Hosted Lobbies <span class="section-count teal">' + hosts.length + ' Active</span>' + hostSyncPill + '</h2>');
       html.push('  <div class="hosts-list">');
 
       hosts.forEach(function (h) {
         var rb = Array.isArray(h.raid_bosses) ? h.raid_bosses[0] : h.raid_bosses;
         var bossName = (rb && rb.name) || 'Unknown';
-        var imgSrc = getBossDisplayImage(rb || { name: bossName });
-        var isManaging = state.managingLobby === h.id;
         var lq = lobbyQueues;
         var isRaidingPhase = lq.some(function (e) { return e.status === 'raiding' || e.status === 'done'; });
         var hostDone = !!h.host_finished_at;
-
-        if (!isManaging) {
-          var prof = state.profile || {};
-          var hostName = prof.in_game_name || prof.display_name || 'Host';
-          var hostTeam = prof.team || '';
-          var hostLevel = prof.trainer_level || '';
-          html.push([
-            '<div class="host-lobby-card">',
-            '  <img class="host-lobby-img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(bossName) + '">',
-            '  <div class="host-lobby-info">',
-            '    <h3>Hosting: ' + escapeHtml(bossName) + '</h3>',
-            '    <div class="host-meta-row">',
-            '      <span class="host-trainer-name">' + icon('user', 13) + ' ' + escapeHtml(hostName) + '</span>',
-            renderTrainerMeta(hostTeam, hostLevel, 'trainer-meta-row'),
-            '    </div>',
-            '    <p>Code: <span class="code-inline">' + escapeHtml(h.friend_code || 'Not set') + '</span> · ' + escapeHtml(String(h.capacity)) + ' players</p>',
-            '  </div>',
-            '  <button class="manage-btn" data-manage-lobby="' + escapeHtml(h.id) + '">Manage Lobby</button>',
-            '</div>'
-          ].join('\n'));
-          return;
-        }
+        var prof = state.profile || {};
+        var hostName = prof.in_game_name || prof.display_name || 'Host';
+        var hostTeam = prof.team || '';
+        var hostLevel = prof.trainer_level || '';
 
         if (isRaidingPhase) {
           var raidingCount = lq.filter(function (e) { return e.status === 'raiding'; }).length;
@@ -315,7 +310,6 @@
 
           rp.push('<div class="lobby-panel">');
           rp.push('  <div class="lobby-panel-header">');
-          rp.push('    <button class="lobby-back-btn" data-close-lobby="1">' + icon('xCircle', 18) + '</button>');
           rp.push('    <h3>' + escapeHtml(bossName) + ' — Raiding</h3>');
           rp.push('  </div>');
           rp.push('  <div class="raid-in-progress-banner">' + icon('zap', 16) + ' Raid in progress!</div>');
@@ -366,6 +360,11 @@
         }
 
         var confirmedCount = lq.filter(function (e) { return e.status === 'confirmed'; }).length;
+        var cap = parseInt(h.capacity, 10) || 5;
+        var slotDots = '';
+        for (var si = 0; si < cap; si++) {
+          slotDots += '<span class="lobby-slot' + (si < confirmedCount ? ' filled' : '') + '"></span>';
+        }
         var inactSecs = h.last_host_action_at ? Math.floor((Date.now() - new Date(h.last_host_action_at).getTime()) / 1000) : 0;
         var hostInactivitySeconds = (state.appConfig || {}).host_inactivity_seconds || 100;
         var infoOpen = !!(state.lobbyInfoOpen || {})[h.id];
@@ -373,10 +372,24 @@
 
         lp.push('<div class="lobby-panel">');
         lp.push('  <div class="lobby-panel-header">');
-        lp.push('    <button class="lobby-back-btn" data-close-lobby="1">' + icon('xCircle', 18) + '</button>');
-        lp.push('    <h3>' + escapeHtml(bossName) + ' — Lobby</h3>');
-        lp.push('    <span class="section-count teal">' + confirmedCount + ' confirmed / ' + escapeHtml(String(h.capacity)) + ' cap</span>');
+        lp.push('    <div class="lobby-panel-title-group">');
+        lp.push('      <h3 class="lobby-panel-title">' + escapeHtml(bossName) + '</h3>');
+        lp.push('      <div class="lobby-slots-wrap">');
+        lp.push('        <span class="lobby-id-tag">Lobby #' + escapeHtml(String(h.id).slice(0, 8).toUpperCase()) + '</span>');
+        lp.push('        <div class="lobby-slots">' + slotDots + '</div>');
+        lp.push('        <span class="lobby-slots-count">' + confirmedCount + ' / ' + cap + ' confirmed</span>');
+        lp.push('      </div>');
+        lp.push('    </div>');
         lp.push('    <button class="lobby-info-btn" type="button" data-toggle-lobby-info="' + escapeHtml(h.id) + '" aria-label="Queue info" aria-expanded="' + infoOpen + '" aria-controls="lobby-info-' + escapeHtml(h.id) + '" title="Queue info">' + icon('info', 16) + '</button>');
+        lp.push('  </div>');
+
+        lp.push('  <div class="lobby-host-strip">');
+        lp.push('    <img class="lobby-host-img-sm" src="' + escapeHtml(getBossDisplayImage(rb || { name: bossName })) + '" alt="' + escapeHtml(bossName) + '">');
+        lp.push('    <div class="lobby-host-info">');
+        lp.push('      <span class="lobby-host-name">' + icon('user', 13) + ' ' + escapeHtml(hostName) + '</span>');
+        lp.push(renderTrainerMeta(hostTeam, hostLevel, 'trainer-meta-row'));
+        lp.push('      <p class="lobby-fc-line">Code: <span class="code-inline">' + escapeHtml(h.friend_code || 'Not set') + '</span></p>');
+        lp.push('    </div>');
         lp.push('  </div>');
 
         if (infoOpen) {
@@ -393,7 +406,7 @@
           lp.push('  </div>');
         }
 
-        if (inactSecs > 0 && confirmedCount >= h.capacity) {
+        if (inactSecs > 0 && confirmedCount >= 1) {
           var remaining = Math.max(0, hostInactivitySeconds - inactSecs);
           lp.push('  <div class="alert-warning">' + icon('alert', 16) + ' <div><strong>Inactivity warning</strong><p>Lobby will close in <span class="countdown" data-inactivity-start="' + escapeHtml(h.last_host_action_at || '') + '" data-inactivity-timeout="' + hostInactivitySeconds + '">' + remaining + 's</span> if you don’t act.</p></div></div>');
         }
@@ -467,7 +480,25 @@
     if (queues.length > 0) {
       var cmap = conflictMap(state.conflicts || []);
       html.push('<section>');
-      html.push('  <h2 class="section-title">Your Queues <span class="section-count indigo">' + queues.length + ' Active</span></h2>');
+      var isVipLive = !!state.isVip;
+      var isVipRetrying = isVipLive && !!state.realtimeRetrying;
+      var pillMode = (state.realtimeMode === 'realtime' || isVipRetrying) ? 'realtime' : 'polling';
+      html.push(
+        '  <h2 class="section-title">Your Queues <span class="section-count indigo">' + queues.length + ' Active</span>' +
+        '<span class="sync-pill sync-pill--' + pillMode + '">' +
+        (pillMode === 'realtime'
+          ? (
+              '<span class="live-icon-wrap' + (isVipLive ? ' live-icon-vip' : '') + '">' +
+                icon('zap', 12) +
+                (isVipLive && !isVipRetrying ? '<span class="live-gold-aura"></span>' : '') +
+              '</span> Live <span class="slot-stats-label">' +
+              (state.realtimeMode === 'realtime' && global.RealtimeUtils ? global.RealtimeUtils.formatRealtimeSlotStats(state.realtimeSlotStats) : '') +
+              '</span>'
+            )
+          : icon('clock', 12) + ' Polling') +
+        '</span>' +
+        '</h2>'
+      );
       html.push('  <div class="queue-cards">');
 
       queues.forEach(function (q) {
@@ -531,7 +562,11 @@
           c.push('  ' + icon('alert', 18));
           c.push('  <div>');
           c.push('    <strong>You\'re Invited!</strong>');
-          c.push('    <p>Add the host and tap the button below. <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
+          if ((q.invite_attempts || 0) > 0) {
+            c.push('    <p>Attempt ' + (q.invite_attempts || 0) + ' / 3 — <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
+          } else {
+            c.push('    <p>Add the host and tap the button below. <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
+          }
           c.push('  </div>');
           c.push('</div>');
         } else if (q.status === 'confirmed') {

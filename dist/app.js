@@ -33,7 +33,11 @@
     adminBosses: [],
     adminEditingId: null,
     adminShowAddForm: false,
-    appConfig: null
+    adminTab: 'bosses',
+    appConfig: null,
+    realtimeMode: 'polling',
+    realtimeRetrying: false,
+    realtimeSlotStats: null
   });
 
   var AppConstants = global.AppConstants || {
@@ -62,6 +66,7 @@
      ═══════════════════════════════════════════════════════════════ */
   var DEBUG_STARTUP = false;
     var profileEditMode = false;
+  var hostSuccessTimer = null;
 
   function assertRequiredGlobal(name) {
     if (!global[name]) {
@@ -198,8 +203,12 @@
 
   function switchView(view) {
     formPersist.save('app', 'view', view);
+    var _prevView = store.getState().view;
     store.setState({ view: view, hostSuccess: false });
+    SessionAudit.track('nav', 'nav.view_switch', { from: _prevView, to: view }, false);
     render(store.getState());
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     // Re-trigger entrance animation (needed for static-HTML views like home/host)
     var section = document.getElementById(view + 'View');
     if (section) {
@@ -230,7 +239,120 @@
     return false;
   }
 
+  /* ═══════════════════════════════════════════════════════════════
+     REALTIME — lifecycle
+     ═══════════════════════════════════════════════════════════════ */
+  async function initRealtimeMode(api) {
+    try {
+      var config = await api.getRealtimeConfig();
+      var result = await api.claimRealtimeSlot();
+      if (result.granted) {
+        var userId = store.getState().config.userId;
+        global.AppRealtime.connect(
+          config.url,
+          config.anonKey,
+          function () { return store.getState().config.token; },
+          userId
+        );
+        store.setState({ realtimeMode: 'realtime', realtimeRetrying: false });
+        SessionAudit.track('realtime', 'realtime.connected', {}, false);
+        // Keep slot count fresh: main poll is throttled to IDLE_MS in realtime mode,
+        // so other users claiming/releasing slots would otherwise take up to 20s to reflect.
+        _slotStatsPollTimer = setInterval(function () {
+          api.getRealtimeSlotStats().then(function (stats) {
+            store.setState({ realtimeSlotStats: stats, lastRefreshedAt: new Date() });
+            renderFooter(store.getState());
+          }).catch(function () {});
+        }, 5000);
+        // Heartbeat: refresh granted_at every 1.5 min so the backend TTL (3 min) never
+        // evicts this active session. Also proves liveness to get_realtime_slot_stats cleanup.
+        // Guard: if realtimeMode was cleared (e.g. sign-out without teardown in old tab),
+        // the interval self-terminates so a stale JWT can't keep a phantom session alive.
+        _heartbeatTimer = setInterval(function () {
+          if (store.getState().realtimeMode !== 'realtime') {
+            clearInterval(_heartbeatTimer);
+            _heartbeatTimer = null;
+            return;
+          }
+          api.claimRealtimeSlot().catch(function () {});
+        }, 90 * 1000);
+      }
+    } catch (e) {
+      console.warn('[Realtime] init failed, staying in polling mode', e);
+    }
+  }
+
+  async function teardownRealtimeMode(api) {
+    if (_slotStatsPollTimer) {
+      clearInterval(_slotStatsPollTimer);
+      _slotStatsPollTimer = null;
+    }
+    if (_heartbeatTimer) {
+      clearInterval(_heartbeatTimer);
+      _heartbeatTimer = null;
+    }
+    if (_realtimeRetryTimer) {
+      clearTimeout(_realtimeRetryTimer);
+      _realtimeRetryTimer = null;
+    }
+    global.AppRealtime.disconnect();
+    try { await api.releaseRealtimeSlot(); } catch (e) { /* best-effort */ }
+    store.setState({ realtimeMode: 'polling', realtimeRetrying: false });
+    SessionAudit.track('realtime', 'realtime.disconnected', {}, false);
+  }
+
+  // Called by AppRealtime IIFE → window.App.handleRealtimeEvent() on WS change event.
+  // Debounce has already fired in the IIFE by the time this is called.
+  function handleRealtimeEvent() {
+    if (_refreshInFlight) return;
+    SessionAudit.track('realtime', 'realtime.push_received', {}, false);
+    refreshData();
+  }
+
+  // Called by AppRealtime on CHANNEL_ERROR, TIMED_OUT, or own realtime_sessions DELETE.
+  // Schedules a backoff retry (20 s, capped at 3 attempts) for transient service blips.
+  // Intentional evictions (realtime_sessions DELETE) also come through here but are capped
+  // the same way — the slot RPC will simply return granted=false if the slot was legitimately
+  // revoked, so retries are harmless.
+  function handleRealtimeDemotion() {
+    var api = getApi();
+    teardownRealtimeMode(api).then(function () {
+      if (_realtimeRetryCount >= 3) {
+        SessionAudit.track('realtime', 'realtime.retry_exhausted', { attempts: _realtimeRetryCount }, false);
+        return;
+      }
+      _realtimeRetryCount++;
+      var delay = 30000; // 30 s — clears the full Supabase Realtime restart window (10–30 s)
+      store.setState({ realtimeRetrying: true });
+      SessionAudit.track('realtime', 'realtime.retry_scheduled', { attempt: _realtimeRetryCount, delay_ms: delay }, false);
+      _realtimeRetryTimer = setTimeout(function () {
+        _realtimeRetryTimer = null;
+        if (!isAuthed() || store.getState().realtimeMode === 'realtime') {
+          store.setState({ realtimeRetrying: false });
+          return;
+        }
+        initRealtimeMode(api).then(function () {
+          if (store.getState().realtimeMode === 'realtime') {
+            _realtimeRetryCount = 0; // reset on success
+          } else {
+            store.setState({ realtimeRetrying: false }); // retry ran but slot not granted
+          }
+        });
+      }, delay);
+    });
+  }
+
+  // Export realtime callbacks for AppRealtime IIFE (realtimeClient.js)
+  window.App = window.App || {};
+  window.App.handleRealtimeEvent = handleRealtimeEvent;
+  window.App.handleRealtimeDemotion = handleRealtimeDemotion;
+
   function handleSessionExpiry() {
+    SessionAudit.track('error', 'error.api_401', { triggered_from: 'handleSessionExpiry' }, true);
+    SessionAudit.track('session', 'session.closed', { reason: 'session_expiry' }, false);
+    SessionAudit.closeSession('session_expiry');
+    _realtimeRetryCount = 0;
+    teardownRealtimeMode(getApi());
     global.AppConfig.clearSession();
     formPersist.clearAll();
     profileEditMode = false;
@@ -253,7 +375,9 @@
       adminEditingId: null,
       syncCursor: null,
       managingLobby: null,
-      lobbyQueues: []
+      lobbyQueues: [],
+      realtimeMode: 'polling',
+      realtimeRetrying: false
     });
     showToast("Session expired. Please sign in again.", "error");
   }
@@ -292,6 +416,7 @@
   }
 
   function getSyncPollInterval(state) {
+    if (state.realtimeMode === 'realtime' && !state.managingLobby) return AppConstants.POLL.IDLE_MS;
     var queues = state.queues || [];
     var hasHotQueue = queues.some(function (q) {
       return q.status === AppConstants.STATUS.INVITED || q.status === AppConstants.STATUS.RAIDING;
@@ -316,7 +441,8 @@
     if (!hosts.length) return Promise.resolve();
     var tasks = hosts.map(function (h) {
       return api.expireStaleInvites(h.id).catch(function () {})
-        .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); });
+        .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); })
+        .then(function () { return api.touchHostActivity(h.id).catch(function () {}); });
     });
     return Promise.all(tasks).then(function () {});
   }
@@ -406,6 +532,7 @@
   function openManageLobby(manageLobby, api) {
     if (!manageLobby) return Promise.resolve();
     if (!ensureAuth()) return Promise.resolve();
+    SessionAudit.track('host', 'host.manage_lobby_open', { raid_id: manageLobby }, true);
 
     var client = api || getApi();
     setLoading(true);
@@ -474,6 +601,12 @@
 
   function renderHostSuccessView(state) {
     global.AppViews.renderHostSuccess(state, {
+      qs: qs
+    });
+  }
+
+  function renderHostCancelConfirmView(state) {
+    global.AppViews.renderCancelConfirmModal(state, {
       qs: qs
     });
   }
@@ -572,9 +705,8 @@
     renderNav(state);
     renderAccountView(state);
     renderHostBossSelectView(state);
-    if (state.hostSuccess) {
-      renderHostSuccessView(state);
-    }
+    renderHostSuccessView(state);
+    renderHostCancelConfirmView(state);
     renderHomeView(state);
     renderQueuesView(state);
     renderVipView(state);
@@ -670,10 +802,29 @@
     });
   }
 
+  function _trackApiError(err, context) {
+    try {
+      SessionAudit.track('error', 'error.api_error', {
+        message: err && err.message, status: err && err.status, source: context
+      }, false);
+    } catch (e) {}
+  }
+
   /* ═══════════════════════════════════════════════════════════════
      DATA — refresh
      ═══════════════════════════════════════════════════════════════ */
+  var _refreshInFlight = false;
+  var _slotStatsPollTimer = null;
+  var _heartbeatTimer = null;
+  var _hiddenAt = null;             // timestamp when tab became hidden
+  var _recoveryInFlight = false;    // guard: prevent double-recovery (visibilitychange + pageshow)
+  var _recoveryWatchdog = null;     // safety: reset _recoveryInFlight if teardown hangs (no-network)
+  var _realtimeRetryTimer = null;   // backoff retry after transient CHANNEL_ERROR / TIMED_OUT
+  var _realtimeRetryCount = 0;      // attempts since last successful connection (cap: 3)
+  var STALE_THRESHOLD_MS = 30000;   // ms hidden before WS is considered dead; matches iOS Safari kill window
+
   function refreshData() {
+    _refreshInFlight = true;
     var state = store.getState();
     var api = getApi();
     setLoading(true);
@@ -686,6 +837,7 @@
     var profilePromise = Promise.resolve(null);
     var adminCheckPromise = Promise.resolve(false);
     var accountStatsPromise = Promise.resolve(null);
+    var slotStatsPromise = Promise.resolve(null);
     var appConfigPromise = api.getAppConfig().then(function (rows) {
       return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
     }).catch(function () { return null; });
@@ -702,9 +854,10 @@
       profilePromise = loadProfileWithFallback(api, state.config.userId);
       adminCheckPromise = api.checkIsAdmin(state.config.userId).catch(function () { return false; });
       accountStatsPromise = api.getMyAccountStats().catch(function () { return null; });
+      slotStatsPromise = api.getRealtimeSlotStats().catch(function () { return null; });
     }
 
-    return Promise.all([raidsPromise, raidBossesPromise, queuePromise, hostPromise, vipPromise, profilePromise, adminCheckPromise, accountStatsPromise, appConfigPromise])
+    return Promise.all([raidsPromise, raidBossesPromise, queuePromise, hostPromise, vipPromise, profilePromise, adminCheckPromise, accountStatsPromise, appConfigPromise, slotStatsPromise])
       .then(function (res) {
         var raids = res[0] || [], raidBosses = res[1] || [];
         var hosts = res[3] || [];
@@ -713,6 +866,7 @@
         var isAdmin = !!res[6];
         var accountStats = res[7] || null;
         var appConfig = res[8] || null;
+        var slotStats = res[9] || null;
 
         if (profile && accountStats && !accountStats.member_since && profile.created_at) {
           accountStats = Object.assign({}, accountStats, { member_since: profile.created_at });
@@ -724,11 +878,11 @@
 
             var bossesPromise = api.listBossQueueStats().then(function (bosses) {
               return { raids:raids, raidBosses:raidBosses, queues:nextQueues, hosts:hosts,
-                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, bosses: Array.isArray(bosses) ? bosses : [] };
+                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: Array.isArray(bosses) ? bosses : [] };
             }).catch(function (err) {
               if (err && err.status === 401) throw err;
               return { raids:raids, raidBosses:raidBosses, queues:nextQueues, hosts:hosts,
-                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, bosses: buildBossesFromRaids(raids) };
+                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: buildBossesFromRaids(raids) };
             });
 
             if (!isAdmin) return bossesPromise;
@@ -746,7 +900,49 @@
       })
       .then(function (payload) {
         payload.lastRefreshedAt = new Date();
+        var prevQueues = store.getState().queues || [];
         store.setState(payload);
+        // Instantly update the sync footer after every refresh
+        renderFooter(store.getState());
+        SessionAudit.track('data', 'data.refresh_ok', null, false);
+
+        // Auto-open lobby management panel when host has an active lobby
+        var currentState = store.getState();
+        var currentManaging = currentState.managingLobby;
+        var suppressAutoOpenLobby = !!currentState.suppressAutoOpenLobby;
+        var firstHost = payload.hosts && payload.hosts.length > 0 ? payload.hosts[0] : null;
+        if (!suppressAutoOpenLobby && !currentManaging && firstHost) {
+          store.setState({ managingLobby: firstHost.id });
+          SessionAudit.track('host', 'host.manage_lobby_auto_open', { raid_id: firstHost.id }, true);
+        } else if (currentManaging && payload.hosts && !payload.hosts.find(function (h) { return h.id === currentManaging; })) {
+          // Lobby was closed/cancelled — clear managing state
+          store.setState({ managingLobby: null, lobbyQueues: [] });
+          SessionAudit.track('host', 'host.manage_lobby_auto_close', { raid_id: currentManaging }, true);
+        }
+        if (suppressAutoOpenLobby) {
+          store.setState({ suppressAutoOpenLobby: false });
+        }
+
+        // Auto-reinvite toast detection
+        (payload.queues || []).forEach(function (q) {
+          var prevQ = prevQueues.find(function (p) { return p.id === q.id; });
+          if (!prevQ) return;
+
+          // Auto-reinvite toast
+          if (q.status === 'invited' && (q.invite_attempts || 0) > 0 && q.invited_at !== prevQ.invited_at) {
+            showToast("You've been automatically re-invited — you still have a spot! (Attempt " + (q.invite_attempts || 0) + " / 3)", 'info');
+          }
+
+          // Cap-hit toast
+          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) >= 3) {
+            showToast("Invite window expired — you're back in queue at your original position.", 'warning');
+          }
+
+          // Lobby full toast
+          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) < 3) {
+            showToast("The lobby is full — you've been returned to the queue.", 'info');
+          }
+        });
 
         // Keep teammate/lobby rosters synced for every visible active queue.
         var snapshotIds = {};
@@ -754,8 +950,10 @@
           var raidId = (Array.isArray(q.raids) ? (q.raids[0] && q.raids[0].id) : (q.raids && q.raids.id)) || q.raid_id;
           if (raidId) snapshotIds[raidId] = true;
         });
-        if (state.managingLobby) {
-          snapshotIds[state.managingLobby] = true;
+        // Include host lobby in snapshot — use updated store state
+        var autoManagedId = store.getState().managingLobby;
+        if (autoManagedId) {
+          snapshotIds[autoManagedId] = true;
         }
         var raidIds = Object.keys(snapshotIds);
         if (raidIds.length > 0 && payload.profile !== undefined) {
@@ -789,10 +987,15 @@
         if (err && err.status === 401) {
           handleSessionExpiry();
         } else {
+          SessionAudit.track('data', 'data.refresh_error', { message: err && err.message }, false);
+          _trackApiError(err, 'refreshData');
           setMessage("Refresh failed: " + err.message, "error");
         }
       })
-      .finally(function () { setLoading(false); });
+      .finally(function () {
+        setLoading(false);
+        _refreshInFlight = false;
+      });
   }
 
   /* ═══════════════════════════════════════════════════════════════
@@ -816,6 +1019,7 @@
         profileEditMode = false;
         formPersist.save('app', 'profileEditMode', 'false');
         formPersist.clear('profileForm');
+        SessionAudit.track('account', 'account.profile_cancel', null, false);
         renderAccountView(store.getState());
         postRenderAccountEffects();
         return;
@@ -851,6 +1055,23 @@
       // Sign out
       var target = e.target.closest("#signOutBtn");
       if (target) {
+        SessionAudit.track('session', 'session.closed', { reason: 'sign_out' }, true);
+        SessionAudit.closeSession('sign_out');
+        // Leave active queues on sign-out (fire-and-forget).
+        // Capture api now — token is still valid, store still populated.
+        // 'raiding' excluded: player is in Pokémon GO, web UI Leave button also excludes it.
+        var _signOutApi = getApi();
+        (store.getState().queues || []).forEach(function (q) {
+          if (q.status === 'queued' || q.status === 'invited'
+              || q.status === 'confirmed') {
+            _signOutApi.leaveQueue(q.id, 'Signed out').catch(function () {});
+          }
+        });
+
+        // Tear down realtime BEFORE clearing the token — releaseRealtimeSlot needs a valid JWT.
+        // Capture api now while the token is still in the store.
+        _realtimeRetryCount = 0;
+        teardownRealtimeMode(getApi());
         global.AppConfig.clearSession();
         formPersist.clearAll();
         profileEditMode = false;
@@ -858,7 +1079,7 @@
         store.setState({
           config: Object.assign({}, store.getState().config, { token: "", userId: "" }),
           view: "account",
-          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, syncCursor: null
+          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
         });
         setTimeout(function () { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 0);
         showToast("You've been signed out.", "info");
@@ -950,6 +1171,7 @@
             formPersist.clear('profileForm');
             store.setState({ profile: Object.assign({}, store.getState().profile || {}, updated) });
             render(store.getState());
+            SessionAudit.track('account', 'account.profile_update', null, false);
             showToast("Profile saved!", "success");
           })
           .catch(function (err) {
@@ -1000,21 +1222,25 @@
         store.setState({ config: cfg, authMode: "signin", pendingConfirmation: null });
         showToast(mode === "signup" ? "Account created! Welcome aboard." : "You're signed in. Welcome back!", "success");
         switchView("home");
-        refreshData();
+        refreshData().then(function () {
+          if (store.getState().realtimeMode === 'polling') initRealtimeMode(getApi());
+        });
+        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store)).then(function () {
+          SessionAudit.track('session', 'session.opened', { auth_mode: store.getState().authMode }, true);
+        });
+        // Deferred audit config apply — wait for appConfig to arrive from first refreshData()
+        var _auditConfigApplied = false;
+        var _unsubAuditConfig = store.subscribe(function (state) {
+          if (_auditConfigApplied || !state.appConfig || !state.appConfig.audit_config) return;
+          _auditConfigApplied = true;
+          SessionAudit.applyConfig(state.appConfig.audit_config);
+          if (_unsubAuditConfig) _unsubAuditConfig();
+        });
       }).catch(function (err) {
         console.error('[Auth] ' + mode + ' failed:', err.message, err);
         setMessage((mode === "signup" ? "Sign up failed: " : "Sign in failed: ") + err.message, "error");
       }).finally(function () { setLoading(false); });
     });
-  }
-
-  function findFallbackRaidIdByBossId(bossId) {
-    var raids = store.getState().raids || [];
-    var userId = ((store.getState().config || {}).userId) || "";
-    var target = raids.find(function (r) {
-      return r.raid_boss_id === bossId && r.host_user_id !== userId;
-    });
-    return target ? target.id : "";
   }
 
   function initHomeActions() {
@@ -1033,13 +1259,8 @@
         var directApi = getApi();
         setLoading(true);
         directApi.joinBossQueue(vipDirect, 'Joined VIP queue')
-          .catch(function (err) {
-            if (err && err.status === 401) throw err;
-            var fallback = findFallbackRaidIdByBossId(vipDirect);
-            if (!fallback) throw err;
-            return directApi.joinRaidQueue(fallback, 'Joined VIP queue');
-          })
           .then(function () {
+            SessionAudit.track('queue', 'queue.join_boss', { boss_id: vipDirect, is_vip: true, join_type: 'vip_direct' }, true);
             showToast('You\'ve joined the VIP priority queue!', 'success');
             return refreshData().then(function () { switchView('queues'); });
           })
@@ -1076,23 +1297,61 @@
       var api = getApi();
       setLoading(true);
       api.joinBossQueue(joinBoss, useVip ? "Joined VIP queue" : "Joined queue")
-        .catch(function (err) {
-          if (err && err.status === 401) throw err;
-          var fallback = findFallbackRaidIdByBossId(joinBoss);
-          if (!fallback) throw err;
-          return api.joinRaidQueue(fallback, useVip ? "Joined VIP queue" : "Joined queue");
-        })
         .then(function () {
           showToast("You've joined the queue!", "success");
+          SessionAudit.track('queue', 'queue.join_boss', { boss_id: joinBoss, is_vip: useVip }, true);
           return refreshData().then(function () {
             switchView("queues");
           });
         })
         .catch(function (err) {
           if (err && err.status === 401) { handleSessionExpiry(); return; }
+          _trackApiError(err, 'initQueueActions');
           setMessage("Join failed: " + err.message, "error");
         })
         .finally(function () { setLoading(false); });
+    });
+  }
+
+  function initModalOverlay() {
+    var overlay = qs('modalOverlay');
+    if (!overlay) return;
+
+    overlay.addEventListener('click', function (e) {
+      var cancelNo = e.target.closest('[data-cancel-raid-no]');
+      if (cancelNo) {
+        store.setState({ hostCancelConfirm: null });
+        render(store.getState());
+        return;
+      }
+
+      var cancelYes = e.target.closest('[data-cancel-raid-yes]');
+      if (cancelYes) {
+        var raidId = cancelYes.getAttribute('data-cancel-raid-yes');
+        store.setState({ hostCancelConfirm: null });
+        render(store.getState());
+        if (!raidId) return;
+        var api = getApi();
+        setLoading(true);
+        SessionAudit.track('host', 'host.cancel_raid', { raid_id: raidId }, true);
+        api.cancelRaid(raidId).then(function () {
+          showToast('Raid cancelled.', 'success');
+          store.setState({ managingLobby: null, lobbyQueues: [], openLobbyQrs: {}, lobbyInfoOpen: {}, suppressAutoOpenLobby: true });
+          switchView('queues');
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          showToast('Cancel raid failed: ' + err.message, 'error');
+          return refreshData().catch(function () {});
+        }).finally(function () { setLoading(false); });
+        return;
+      }
+
+      // Clicking the backdrop (overlay itself, not the card) dismisses
+      if (e.target === overlay) {
+        store.setState({ hostCancelConfirm: null });
+        render(store.getState());
+      }
     });
   }
 
@@ -1125,9 +1384,24 @@
     var hostContent = qs('hostContent');
     if (hostContent) {
       hostContent.addEventListener('click', function (e) {
+        // Handle dismiss button on the success card
+        var dismissBtn = e.target.closest('[data-dismiss-host-success]');
+        if (dismissBtn) {
+          e.preventDefault();
+          if (hostSuccessTimer) { clearTimeout(hostSuccessTimer); hostSuccessTimer = null; }
+          store.setState({ hostSuccess: false });
+          render(store.getState());
+          return;
+        }
+
+        // Handle any [data-view] link/button (including the My Queues link)
         var navTarget = e.target.closest('[data-view]');
         if (!navTarget) return;
         e.preventDefault();
+        if (store.getState().hostSuccess) {
+          if (hostSuccessTimer) { clearTimeout(hostSuccessTimer); hostSuccessTimer = null; }
+          store.setState({ hostSuccess: false });
+        }
         switchView(navTarget.getAttribute('data-view'));
       });
     }
@@ -1180,14 +1454,27 @@
         startTime: now.toISOString(), endTime: end.toISOString(),
         capacity: spots
       }).then(function () {
+        SessionAudit.track('host', 'host.create_raid', { boss_id: bossId, capacity: spots }, true);
         formPersist.clear('hostForm');
+        submitBtn.disabled = false;
         store.setState({ hostSuccess: true });
         render(store.getState());
+        if (hostSuccessTimer) {
+          clearTimeout(hostSuccessTimer);
+        }
+        hostSuccessTimer = setTimeout(function () {
+          var current = store.getState();
+          if (current.hostSuccess) {
+            store.setState({ hostSuccess: false });
+            render(store.getState());
+            SessionAudit.track('host', 'host.success_auto_dismissed', {}, false);
+          }
+          hostSuccessTimer = null;
+        }, 10000);
         return refreshData();
-      }).then(function () {
-        setTimeout(function () { switchView("queues"); }, 2000);
       }).catch(function (err) {
         if (err && err.status === 401) { handleSessionExpiry(); return; }
+        _trackApiError(err, 'initHostForm');
         setMessage("Host failed: " + err.message, "error");
         submitBtn.disabled = false;
       }).finally(function () { setLoading(false); });
@@ -1198,7 +1485,7 @@
     qs("queuesContent").addEventListener("click", function (e) {
       var origin = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
       if (!origin || typeof origin.closest !== "function") return;
-      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]") || origin.closest("[data-rejoin-boss]") || origin.closest("[data-delete-queue]") || origin.closest("[data-delete-lobby]");
+      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]") || origin.closest("[data-rejoin-boss]") || origin.closest("[data-delete-queue]") || origin.closest("[data-delete-lobby]") || origin.closest("[data-dismiss-host-success]");
       if (!target) return;
 
       // Handle "Find Raids" / "Host Raid" nav buttons in empty state
@@ -1218,7 +1505,6 @@
 
       if (!ensureAuth()) return;
       var api = getApi();
-
 
       var toggleAllLobbyQrs = target && target.getAttribute("data-toggle-all-lobby-qrs");
       if (toggleAllLobbyQrs) {
@@ -1267,6 +1553,7 @@
         var nextCursor = normalizeSyncCursor(store.getState().syncCursor);
         nextCursor.managingLobbyVersion = null;
         store.setState({ managingLobby: null, lobbyQueues: [], openLobbyQrs: {}, lobbyInfoOpen: {}, syncCursor: nextCursor });
+        SessionAudit.track('host', 'host.manage_lobby_close', { raid_id: closeLobby }, false);
         render(store.getState());
         return;
       }
@@ -1274,6 +1561,7 @@
       var startRaid = target.getAttribute("data-start-raid");
       if (startRaid) {
         setLoading(true);
+        SessionAudit.track('host', 'host.start_raid', { raid_id: startRaid }, true);
         api.startRaid(startRaid).then(function () {
           showToast("Raid started! Go catch 'em!", "success");
           return api.listRaidQueue(startRaid);
@@ -1291,6 +1579,7 @@
       var hostFinish = target.getAttribute("data-host-finish");
       if (hostFinish) {
         setLoading(true);
+        SessionAudit.track('host', 'host.finish_raid', { raid_id: hostFinish }, true);
         api.hostFinishRaiding(hostFinish).then(function () {
           showToast("Marked as done!", "success");
           return api.listRaidQueue(hostFinish);
@@ -1307,17 +1596,9 @@
 
       var deleteLobby = target.getAttribute("data-delete-lobby");
       if (deleteLobby) {
-        if (!window.confirm("Cancel this raid?\n\nPlayers still waiting will be moved to another lobby if one is available.")) return;
-        setLoading(true);
-        api.cancelRaid(deleteLobby).then(function () {
-          showToast("Raid cancelled.", "success");
-          store.setState({ managingLobby: null, lobbyQueues: [], openLobbyQrs: {}, lobbyInfoOpen: {} });
-          return refreshData();
-        }).catch(function (err) {
-          if (err && err.status === 401) { handleSessionExpiry(); return; }
-          showToast("Cancel raid failed: " + err.message, "error");
-          return refreshData().catch(function () {});
-        }).finally(function () { setLoading(false); });
+        switchView('queues');
+        store.setState({ hostCancelConfirm: deleteLobby });
+        render(store.getState());
         return;
       }
 
@@ -1328,6 +1609,7 @@
 
       if (rejoinBossId) {
         setLoading(true);
+        SessionAudit.track('queue', 'queue.rejoin_boss', { boss_id: rejoinBossId }, true);
         var cleanupFirst = cleanupQueueId
           ? api.deleteQueueEntry(cleanupQueueId).catch(function () {})
           : Promise.resolve();
@@ -1346,6 +1628,7 @@
 
       if (deleteQueueId) {
         setLoading(true);
+        SessionAudit.track('queue', 'queue.delete_done', { queue_id: deleteQueueId }, false);
         api.deleteQueueEntry(deleteQueueId).then(function () {
           return refreshData();
         }).catch(function (err) {
@@ -1363,6 +1646,7 @@
       setLoading(true);
 
       if (finishRaidingId) {
+        SessionAudit.track('queue', 'queue.finish', { queue_id: finishRaidingId }, true);
         api.finishRaiding(finishRaidingId).then(function () {
           showToast("Raid complete! GG", "success");
           return refreshData();
@@ -1375,6 +1659,7 @@
       }
 
       if (friendSentId) {
+        SessionAudit.track('queue', 'queue.confirm_invite', { queue_id: friendSentId }, true);
         api.confirmInvite(friendSentId).then(function () {
           showToast("Friend request marked as sent. Waiting for the host to start.", "success");
           return refreshData();
@@ -1387,6 +1672,10 @@
       }
 
       if (leaveId) {
+        var _leaveQ = (store.getState().queues || []).find(function (q) { return q.id === leaveId; });
+        SessionAudit.track('queue', 'queue.leave', {
+          queue_id: leaveId, status: _leaveQ && _leaveQ.status, raid_id: _leaveQ && _leaveQ.raid_id
+        }, true);
         api.leaveQueue(leaveId, "Left queue").then(function () {
           setMessage("Queue left", "ok"); return refreshData();
         }).catch(function (err) {
@@ -1402,6 +1691,7 @@
         });
         if (!conflict) { setLoading(false); return; }
         var toLeave = conflict.leftQueueId === keepId ? conflict.rightQueueId : conflict.leftQueueId;
+        SessionAudit.track('queue', 'queue.keep', { kept: keepId, leaving: toLeave }, true);
         api.leaveQueue(toLeave, "Left due to conflict").then(function () {
           setMessage("Conflict resolved", "ok"); return refreshData();
         }).catch(function (err) {
@@ -1424,6 +1714,11 @@
         ? api.activateVip(state.config.userId)
         : api.deactivateVip(state.config.userId);
       Promise.resolve(action).then(function () {
+        if (target.id === 'vipUpgradeBtn') {
+          SessionAudit.track('account', 'account.vip_activate', null, true);
+        } else {
+          SessionAudit.track('account', 'account.vip_deactivate', null, true);
+        }
         setMessage(target.id === "vipUpgradeBtn" ? "VIP activated" : "VIP cancelled", "ok");
         return refreshData();
       }).catch(function (err) {
@@ -1438,6 +1733,57 @@
     if (!wrap) return;
 
     wrap.addEventListener("click", function (e) {
+      // Admin tab switching
+      var tabBtn = e.target.closest('[data-admin-tab]');
+      if (tabBtn) {
+        store.setState({ adminTab: tabBtn.dataset.adminTab });
+        return;
+      }
+
+      // Save realtime slots (App Settings card)
+      if (e.target.id === 'saveRealtimeSlotsBtn') {
+        var input = document.getElementById('realtimeSlotsInput');
+        var slots = parseInt(input ? input.value : '', 10);
+        if (isNaN(slots) || slots < 0) {
+          showToast('Realtime slots must be 0 or greater.', 'error');
+          return;
+        }
+        var api = getApi();
+        api.adminUpdateRealtimeSlots(slots)
+          .then(function () { showToast('Realtime slots updated.', 'success'); return refreshData(); })
+          .catch(function (e) { showToast('Failed to update: ' + (e.message || 'Unknown error'), 'error'); });
+        return;
+      }
+
+      // Save audit config (Audit tab)
+      if (e.target.id === 'saveAuditConfigBtn') {
+        var auditEnabled = document.getElementById('auditEnabledToggle');
+        var auditFlush = document.getElementById('auditFlushMs');
+        var auditBuffer = document.getElementById('auditBufferMax');
+        var flushVal = parseInt(auditFlush ? auditFlush.value : '', 10);
+        var bufVal = parseInt(auditBuffer ? auditBuffer.value : '', 10);
+        if (isNaN(flushVal) || flushVal < 1000) { showToast('Flush interval must be at least 1000 ms.', 'error'); return; }
+        if (isNaN(bufVal) || bufVal < 1) { showToast('Buffer max must be at least 1.', 'error'); return; }
+        var catCheckboxes = wrap.querySelectorAll('[name^="audit_cat_"]');
+        var categories = {};
+        catCheckboxes.forEach(function (cb) {
+          categories[cb.value] = cb.checked;
+        });
+        // session and error are always on
+        categories.session = true;
+        categories.error = true;
+        var newConfig = {
+          enabled: auditEnabled ? auditEnabled.checked : true,
+          flush_interval_ms: flushVal,
+          buffer_max: bufVal,
+          categories: categories
+        };
+        var api = getApi();
+        api.adminUpdateAuditConfig(newConfig)
+          .then(function () { showToast('Audit config saved.', 'success'); return refreshData(); })
+          .catch(function (e) { showToast('Failed to save audit config: ' + (e.message || 'Unknown error'), 'error'); });
+        return;
+      }
       // Toggle add form
       var toggleBtn = e.target.closest(".admin-toggle-add");
       if (toggleBtn) {
@@ -1480,6 +1826,66 @@
         store.setState({ adminEditingId: null });
         render(store.getState());
         return;
+      }
+
+      // Purge audit trail for a single user
+      if (e.target.closest('#purgeUserAuditBtn')) {
+        var email = (qs('purgeAuditEmail').value || '').trim().toLowerCase();
+        if (!email) return;
+        if (!confirm('Delete all audit trail records for ' + email + '? This cannot be undone.')) return;
+        var purgeUserBtn = qs('purgeUserAuditBtn');
+        var purgeUserOrig = purgeUserBtn.textContent;
+        purgeUserBtn.disabled = true;
+        purgeUserBtn.textContent = 'Purging...';
+        var api = getApi();
+        api.adminPurgeAuditTrailByEmail(email)
+          .then(function (result) {
+            showToast('Purged ' + result.sessions_deleted + ' sessions for ' + email, 'success');
+            var accountStats = store.getState().accountStats;
+            if (accountStats && accountStats.email && accountStats.email.toLowerCase() === email) {
+              showToast('Your current session audit will restart on next sign-in.', 'info');
+            }
+          })
+          .catch(function (err) {
+            showToast(err.message || 'Purge failed', 'error');
+          })
+          .finally(function () {
+            purgeUserBtn.disabled = false;
+            purgeUserBtn.textContent = purgeUserOrig;
+          });
+        return;
+      }
+
+      // Purge entire audit trail for all users
+      if (e.target.closest('#purgeAllAuditBtn')) {
+        if (!confirm('Delete the ENTIRE audit trail for ALL users? This cannot be undone.')) return;
+        var purgeAllBtn = qs('purgeAllAuditBtn');
+        var purgeAllOrig = purgeAllBtn.textContent;
+        purgeAllBtn.disabled = true;
+        purgeAllBtn.textContent = 'Purging...';
+        var api = getApi();
+        api.adminPurgeAllAuditTrail()
+          .then(function (result) {
+            showToast('Purged ' + result.sessions_deleted + ' sessions (all users)', 'success');
+            showToast('Your current session audit will restart on next sign-in.', 'info');
+          })
+          .catch(function (err) {
+            showToast(err.message || 'Purge failed', 'error');
+          })
+          .finally(function () {
+            purgeAllBtn.disabled = false;
+            purgeAllBtn.textContent = purgeAllOrig;
+          });
+        return;
+      }
+    });
+
+    wrap.addEventListener('input', function (e) {
+      if (e.target && e.target.id === 'purgeAuditEmail') {
+        var purgeBtn = qs('purgeUserAuditBtn');
+        if (purgeBtn) {
+          purgeBtn.disabled = (e.target.value || '').trim() === '';
+        }
       }
     });
 
@@ -1529,6 +1935,11 @@
         : api.adminCreateBoss(data);
 
       Promise.resolve(action).then(function () {
+        if (mode === 'edit') {
+          SessionAudit.track('admin', 'admin.boss_update', { boss_id: bossId }, false);
+        } else {
+          SessionAudit.track('admin', 'admin.boss_create', { name: name }, false);
+        }
         showToast(mode === "edit" ? "Boss updated." : "Boss added.", "success");
         store.setState({ adminEditingId: null, adminShowAddForm: false });
         return refreshData();
@@ -1561,9 +1972,10 @@
       switchView(btn.getAttribute("data-view"));
     });
 
-    // "More" hamburger button opens drawer
-    var menuBtn = qs("drawerMenuBtn");
-    if (menuBtn) menuBtn.addEventListener("click", function () { openDrawer(); });
+    // Hamburger: event delegation — any element with data-open-drawer opens the drawer
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("[data-open-drawer]")) { openDrawer(); }
+    });
 
     // Drawer close button
     var closeBtn = qs("drawerCloseBtn");
@@ -1622,7 +2034,9 @@
       console.log('[AuthCallback] Session saved — auto sign-in complete');
       showToast("Email confirmed — you're signed in!", "success");
       switchView("home");
-      refreshData();
+      refreshData().then(function () {
+        if (store.getState().realtimeMode === 'polling') initRealtimeMode(getApi());
+      });
     } catch (err) {
       console.error('[AuthCallback] Token decode failed:', err.message);
       showToast("Confirmation link invalid or expired. Please sign in.", "error");
@@ -1647,6 +2061,7 @@
     safeInit('initNavigation', initNavigation);
     safeInit('initHomeActions', initHomeActions);
     safeInit('initHostForm', initHostForm);
+    safeInit('initModalOverlay', initModalOverlay);
     safeInit('initQueueActions', initQueueActions);
     safeInit('initVipActions', initVipActions);
     safeInit('initAdminActions', initAdminActions);
@@ -1671,20 +2086,139 @@
 
     // Sync footer: refresh button + auto-update relative time
     qs("syncFooter").addEventListener("click", function (e) {
-      if (e.target.closest("#syncRefreshBtn")) refreshData();
+      if (e.target.closest("#syncRefreshBtn")) {
+        refreshData().then(function () {
+          if (isAuthed() && store.getState().realtimeMode === 'polling') initRealtimeMode(getApi());
+        });
+      }
+    });
+    // Tick the "Synced Xs ago" text every 5 s without triggering a full re-render.
+    // In realtime mode the main poll backs off to IDLE_MS, so the footer would otherwise
+    // go stale between actual data refreshes.
+    setInterval(function () { renderFooter(store.getState()); }, 5000);
+
+    // Re-check realtime eligibility when the page is restored from bfcache (back/forward nav).
+    // DOMContentLoaded / init() do NOT re-run in that case, so the old WS is dead and
+    // the store may still have realtimeMode:'realtime' (stale) or 'polling' (never upgraded).
+    // _recoveryInFlight guards against double-execution when visibilitychange fires first.
+    window.addEventListener('pageshow', function (e) {
+      if (!e.persisted) return; // not a bfcache restore — normal load handled by init()
+      // Anonymous browsers have no realtime slot to recover, but still refresh data on
+      // bfcache restore — the snapshot could be arbitrarily old from the previous visit.
+      if (!isAuthed()) return;
+      if (_recoveryInFlight) return; // visibilitychange already started recovery
+      _recoveryInFlight = true;
+      SessionAudit.track('lifecycle', 'lifecycle.recovery_start', { trigger: 'bfcache' }, true);
+      if (_recoveryWatchdog) clearTimeout(_recoveryWatchdog);
+      _recoveryWatchdog = setTimeout(function () { _recoveryInFlight = false; _recoveryWatchdog = null; }, 10000);
+      var api = getApi();
+      var currentMode = store.getState().realtimeMode;
+      if (currentMode === 'realtime') {
+        // WS is dead after bfcache restore — tear down cleanly then re-init
+        teardownRealtimeMode(api).then(function () {
+          return refreshData();
+        }).then(function () {
+          if (isAuthed() && store.getState().realtimeMode === 'polling') return initRealtimeMode(api);
+        }).then(function () {
+          SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
+        }).catch(function () {}).then(function () {
+          clearTimeout(_recoveryWatchdog);
+          _recoveryWatchdog = null;
+          _recoveryInFlight = false;
+        });
+      } else {
+        // Was in polling mode — try to upgrade now that we have fresh context
+        refreshData().then(function () {
+          if (isAuthed() && store.getState().realtimeMode === 'polling') return initRealtimeMode(api);
+        }).then(function () {
+          SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
+        }).catch(function () {}).then(function () {
+          clearTimeout(_recoveryWatchdog);
+          _recoveryWatchdog = null;
+          _recoveryInFlight = false;
+        });
+      }
+    });
+
+    // Recover realtime mode when user returns from another app (app-switch / screen lock).
+    // On mobile the OS kills the WebSocket after ~30 s of inactivity. visibilitychange fires
+    // on app-switch; pageshow fires on bfcache restore — they are separate recovery paths.
+    // _hiddenAt tracks hidden duration; _recoveryInFlight prevents double-execution when
+    // bfcache restore triggers both events (visibilitychange first, then pageshow).
+    // _recoveryWatchdog guarantees flag reset even if teardown hangs on a dead network.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') {
+        _hiddenAt = Date.now();
+        SessionAudit.track('lifecycle', 'lifecycle.visibility_hidden', {}, false);
+        return;
+      }
+      // Became visible
+      if (!isAuthed()) { _hiddenAt = null; return; }
+      var elapsed = _hiddenAt != null ? (Date.now() - _hiddenAt) : 0;
+      _hiddenAt = null;
+      SessionAudit.track('lifecycle', 'lifecycle.visibility_visible', { elapsed_ms: elapsed }, false);
+      if (elapsed < STALE_THRESHOLD_MS) return; // short switch — WS is likely still alive
+      if (_recoveryInFlight) return;            // pageshow already handling this restore
+      _recoveryInFlight = true;
+      SessionAudit.track('lifecycle', 'lifecycle.recovery_start', { trigger: 'visibility_change', elapsed_ms: elapsed }, true);
+      if (_recoveryWatchdog) clearTimeout(_recoveryWatchdog);
+      _recoveryWatchdog = setTimeout(function () { _recoveryInFlight = false; _recoveryWatchdog = null; }, 10000);
+      var api = getApi();
+      var mode = store.getState().realtimeMode;
+      var recover = (mode === 'realtime')
+        ? teardownRealtimeMode(api).then(function () { return refreshData(); })
+        : refreshData();
+      recover.then(function () {
+        if (isAuthed() && store.getState().realtimeMode === 'polling') {
+          return initRealtimeMode(api);
+        }
+      }).then(function () {
+        SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
+      }).catch(function () {}).then(function () {
+        clearTimeout(_recoveryWatchdog);
+        _recoveryWatchdog = null;
+        _recoveryInFlight = false;
+      });
+    });
+
+    // Release realtime slot on page unload (fire-and-forget, keepalive ensures completion)
+    window.addEventListener('beforeunload', function () {
+      var s = store.getState();
+      if (s.realtimeMode === 'realtime' && s.config && s.config.token) {
+        fetch('/api/rest/v1/rpc/release_realtime_slot', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + s.config.token,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+          keepalive: true,
+        });
+      }
     });
 
     // Lightweight sync polling: check version stamps often, refresh full state only when needed.
     var pollTimer = null;
     var lastMaintenanceAt = 0;
+    var _lastPollTier = null; // track poll tier for audit change detection
     function scheduleNextPoll() {
       if (pollTimer) clearTimeout(pollTimer);
       var interval = getSyncPollInterval(store.getState());
+      var _currentTier = interval === AppConstants.POLL.HOT_MS ? 'hot'
+                       : interval === AppConstants.POLL.WARM_MS ? 'warm' : 'idle';
+      if (_currentTier !== _lastPollTier) {
+        SessionAudit.track('data', 'data.poll_tier_change',
+          { from: _lastPollTier, to: _currentTier, interval_ms: interval }, false);
+        _lastPollTier = _currentTier;
+      }
 
       pollTimer = setTimeout(function () {
         var s = store.getState();
         if (!isAuthed()) {
-          scheduleNextPoll();
+          // Unauthenticated browsers still need periodic refreshes so boss card counters
+          // (queue_length, active_hosts) stay current. Skip maintenance and cursor checks —
+          // those require auth — but run a full refreshData() to re-fetch boss_queue_stats.
+          refreshData().catch(function () {}).then(function () { scheduleNextPoll(); });
           return;
         }
         var api = getApi();
@@ -1699,8 +2233,14 @@
           return getQueueSyncCursor(api, store.getState().managingLobby);
         }).then(function (nextCursor) {
           if (syncCursorChanged(store.getState().syncCursor, nextCursor)) {
+            if (_refreshInFlight) {
+              // A refresh is already in-flight. Skip this tick; reschedule at normal interval.
+              scheduleNextPoll();
+              return;
+            }
             return refreshData();
           }
+          SessionAudit.track('data', 'data.poll_tick_no_change', {}, false);
           store.setState({ syncCursor: nextCursor });
         }).then(function () {
           updateCountdowns();
@@ -1740,8 +2280,16 @@
     // Tick countdowns every second (lightweight, no network)
     setInterval(updateCountdowns, 1000);
 
+    SessionAudit.track('lifecycle', 'lifecycle.page_load', null, false);
+
     // Start the adaptive poll cycle after initial data load
     refreshData().then(function () {
+      if (isAuthed()) {
+        initRealtimeMode(getApi());
+      }
+      if (isAuthed()) {
+        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store));
+      }
       scheduleNextPoll();
     });
     render(store.getState());
