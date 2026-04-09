@@ -38,6 +38,24 @@
       }).then(parseResponse);
     }
 
+    function requestKeepalive(path, options) {
+      var opts = options || {};
+      var headers = Object.assign({
+        "Content-Type": "application/json"
+      }, opts.headers || {});
+
+      if (config.token) {
+        headers.Authorization = "Bearer " + config.token;
+      }
+
+      return fetch("/api" + path, {
+        method: opts.method || "GET",
+        headers: headers,
+        body: typeof opts.body === "undefined" ? undefined : JSON.stringify(opts.body),
+        keepalive: true
+      }).then(parseResponse);
+    }
+
     return {
       signUp: function (email, password) {
         return request("/auth/v1/signup", {
@@ -344,6 +362,16 @@
       },
       closeUserSession: function (sessionId, reason, finalEvents) {
         return request("/rest/v1/rpc/close_user_session", {
+          method: "POST",
+          body: {
+            p_session_id:   sessionId,
+            p_reason:       reason,
+            p_final_events: finalEvents || []
+          }
+        });
+      },
+      closeUserSessionKeepalive: function (sessionId, reason, finalEvents) {
+        return requestKeepalive("/rest/v1/rpc/close_user_session", {
           method: "POST",
           body: {
             p_session_id:   sessionId,

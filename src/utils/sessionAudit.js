@@ -79,6 +79,7 @@
     var DEFAULT = { enabled: true, flush_interval_ms: 5000, buffer_max: 50,
                     categories: { session:true, error:true, nav:true, queue:true,
                                   host:true, lifecycle:true, realtime:true,
+                                  realtime_debug:true,
                                   data:true, account:true, admin:true, ui:true } };
     try {
       var s = _getState && _getState();
@@ -200,6 +201,16 @@
     return api.closeUserSession(sid, reason, events).catch(function () {});
   }
 
+  function closeSessionKeepalive(reason, finalPayload) {
+    var api = _getApiClient();
+    if (!api || !_sessionId) { _clearSession(); return Promise.resolve(); }
+    var sid = _sessionId;
+    var events = _buffer.slice();
+    _clearSession();
+    if (_flushTimer) { clearInterval(_flushTimer); _flushTimer = null; }
+    return api.closeUserSessionKeepalive(sid, reason, events).catch(function () {});
+  }
+
   function track(eventType, eventName, payload, includeSnapshot) {
     if (!_sessionId) return;
     var cfg = _readAuditConfig();
@@ -242,6 +253,7 @@
   }
 
   global.SessionAudit = { init: init, resumeOrOpen: resumeOrOpen, openSession: openSession,
-                          closeSession: closeSession, track: track, flush: flush,
+                          closeSession: closeSession, closeSessionKeepalive: closeSessionKeepalive,
+                          track: track, flush: flush,
                           applyConfig: applyConfig };
 })(window);

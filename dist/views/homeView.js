@@ -66,33 +66,10 @@
 
 
     // --- Filter modal/dropdown markup ---
-    var allTiers = getUniqueTiers(bosses);
-    var allTypes = getUniqueTypes(bosses);
-    var filterModal =
-      '<div id="filterModal" class="filter-modal' + (filterState.open ? '' : ' hidden') + '">' +
-        '<div class="filter-modal-backdrop"></div>' +
-        '<div class="filter-modal-content">' +
-          '<h2 class="filter-modal-title">Filter Raid Bosses</h2>' +
-          '<div class="filter-group"><label>Tier:</label>' +
-            '<select id="filterTier"><option value="">All</option>' +
-              allTiers.map(function(t){return '<option value="'+t+'"'+(filterState.tier===t?' selected':'')+'>'+t+'</option>';}).join('') +
-            '</select>' +
-          '</div>' +
-          '<div class="filter-group"><label>Type:</label>' +
-            '<select id="filterType"><option value="">All</option>' +
-              allTypes.map(function(t){return '<option value="'+t+'"'+(filterState.type===t?' selected':'')+'>'+t+'</option>';}).join('') +
-            '</select>' +
-          '</div>' +
-          '<div class="filter-modal-actions">' +
-            '<button id="filterApplyBtn" class="btn-primary">Apply</button>' +
-            '<button id="filterClearBtn" class="btn-secondary">Clear</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+    var filterModal = '';
 
     if (!filtered.length) {
-      updateRenderedHtml(wrap, filterModal + '<p class="boss-grid-empty">No active raid bosses found.</p>');
-      bindFilterEvents();
+      updateRenderedHtml(wrap, '<p class="boss-grid-empty">No active raid bosses found.</p>');
       return;
     }
 
@@ -115,7 +92,7 @@
     // Insert pill at top right of boss grid area
     var bossGridHeader = '<div class="boss-grid-header"><div></div><div class="boss-sync-pill-top-wrap">' + syncPill + '</div></div>';
 
-    updateRenderedHtml(wrap, filterModal + bossGridHeader + filtered.map(function (boss) {
+    updateRenderedHtml(wrap, bossGridHeader + filtered.map(function (boss) {
       var types = Array.isArray(boss.types) ? boss.types : [];
       var bossRaids = raids.filter(function (raid) {
         return raid.raid_boss_id === boss.id;
@@ -190,50 +167,9 @@
         '</article>'
       ].join("\n");
     }).join("\n"));
-    bindFilterEvents();
+    // Filter modal and events are disabled for v1.0 release.
   };
 
   // --- Bind filter icon and modal events ---
-  function bindFilterEvents() {
-    var filterBtn = document.querySelector('.filter-btn');
-    if (filterBtn && !filterBtn.__bound) {
-      filterBtn.__bound = true;
-      filterBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        filterState.open = true;
-        global.AppViews.renderHome(global.AppStore.getState());
-      });
-    }
-    var modal = document.getElementById('filterModal');
-    if (!modal) return;
-    var backdrop = modal.querySelector('.filter-modal-backdrop');
-    if (backdrop) {
-      backdrop.addEventListener('click', function() {
-        filterState.open = false;
-        global.AppViews.renderHome(global.AppStore.getState());
-      });
-    }
-    var tierSel = document.getElementById('filterTier');
-    var typeSel = document.getElementById('filterType');
-    var applyBtn = document.getElementById('filterApplyBtn');
-    var clearBtn = document.getElementById('filterClearBtn');
-    if (applyBtn) {
-      applyBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        filterState.tier = tierSel.value || null;
-        filterState.type = typeSel.value || null;
-        filterState.open = false;
-        global.AppViews.renderHome(global.AppStore.getState());
-      });
-    }
-    if (clearBtn) {
-      clearBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        filterState.tier = null;
-        filterState.type = null;
-        filterState.open = false;
-        global.AppViews.renderHome(global.AppStore.getState());
-      });
-    }
-  }
+  // Filter modal and events are disabled for v1.0 release.
 })(window);

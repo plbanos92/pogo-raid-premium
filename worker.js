@@ -40,6 +40,25 @@ export default {
       );
     }
 
+    if (url.pathname === '/api/vapid-key' && request.method === 'GET') {
+      const auth = request.headers.get('Authorization');
+      if (!auth || !auth.startsWith('Bearer ')) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      if (!env.VAPID_PUBLIC_KEY) {
+        return Response.json({ error: 'Server not configured' }, { status: 500 });
+      }
+      return Response.json(
+        { key: env.VAPID_PUBLIC_KEY },
+        {
+          headers: {
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }
+      );
+    }
+
     // Strip /api prefix → Supabase path  (/api/auth/v1/... → /auth/v1/...)
     const supabasePath = url.pathname.slice(4);
 

@@ -118,6 +118,7 @@
       { key: 'host',      label: 'Host' },
       { key: 'lifecycle', label: 'Lifecycle' },
       { key: 'realtime',  label: 'Realtime' },
+      { key: 'realtime_debug', label: 'RT Debug', hint: 'Channel-level diagnostics' },
       { key: 'account',   label: 'Account' },
       { key: 'admin',     label: 'Admin' }
     ];

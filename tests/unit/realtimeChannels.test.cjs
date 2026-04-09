@@ -58,22 +58,18 @@ test("Channel 4 calls scheduleRealtimeRefresh on change", () => {
   );
 });
 
-test("Channel 4 demotion callback handles CHANNEL_ERROR and TIMED_OUT", () => {
+test("Channel 4 uses diagnostic-only subscribe callback (no demotion)", () => {
   const block = src.slice(
     src.indexOf("channel('boss-queue-changes')"),
     src.indexOf("channel('boss-meta-changes')")
   );
   assert.ok(
-    block.includes("CHANNEL_ERROR"),
-    "Channel 4 subscribe callback must handle CHANNEL_ERROR"
+    block.includes("_channelSubscribeTrackOnly('boss-queue-changes')"),
+    "Channel 4 subscribe must use _channelSubscribeTrackOnly (diagnostic-only)"
   );
   assert.ok(
-    block.includes("TIMED_OUT"),
-    "Channel 4 subscribe callback must handle TIMED_OUT"
-  );
-  assert.ok(
-    block.includes("handleRealtimeDemotion()"),
-    "Channel 4 subscribe callback must call handleRealtimeDemotion()"
+    !block.includes("_channelSubscribeCallback('boss-queue-changes')"),
+    "Channel 4 must NOT use _channelSubscribeCallback (which triggers demotion)"
   );
 });
 
@@ -127,22 +123,18 @@ test("Channel 5 calls scheduleRealtimeRefresh on change", () => {
   );
 });
 
-test("Channel 5 demotion callback handles CHANNEL_ERROR and TIMED_OUT", () => {
+test("Channel 5 uses diagnostic-only subscribe callback (no demotion)", () => {
   const block = src.slice(
     src.indexOf("channel('boss-meta-changes')"),
     src.indexOf("disconnect:")
   );
   assert.ok(
-    block.includes("CHANNEL_ERROR"),
-    "Channel 5 subscribe callback must handle CHANNEL_ERROR"
+    block.includes("_channelSubscribeTrackOnly('boss-meta-changes')"),
+    "Channel 5 subscribe must use _channelSubscribeTrackOnly (diagnostic-only)"
   );
   assert.ok(
-    block.includes("TIMED_OUT"),
-    "Channel 5 subscribe callback must handle TIMED_OUT"
-  );
-  assert.ok(
-    block.includes("handleRealtimeDemotion()"),
-    "Channel 5 subscribe callback must call handleRealtimeDemotion()"
+    !block.includes("_channelSubscribeCallback('boss-meta-changes')"),
+    "Channel 5 must NOT use _channelSubscribeCallback (which triggers demotion)"
   );
 });
 
@@ -173,6 +165,64 @@ test("All five channel names appear in the correct order", () => {
     assert.ok(idx > lastIdx, `Channel ${name} must appear after the previous channel in connect()`);
     lastIdx = idx;
   }
+});
+
+// ── _channelSubscribeCallback factory ─────────────────────────────────────────
+
+test("_channelSubscribeCallback factory exists and calls handleRealtimeDemotion", () => {
+  assert.ok(
+    /function\s+_channelSubscribeCallback\s*\(/.test(src),
+    "_channelSubscribeCallback factory function must be declared"
+  );
+  assert.ok(
+    src.includes("handleRealtimeDemotion("),
+    "_channelSubscribeCallback must call handleRealtimeDemotion with channel info"
+  );
+});
+
+test("_channelSubscribeCallback tracks channel status via SessionAudit", () => {
+  assert.ok(
+    src.includes("realtime.channel_status"),
+    "_channelSubscribeCallback must track 'realtime.channel_status' event"
+  );
+});
+
+test("_channelSubscribeTrackOnly factory exists and does NOT call handleRealtimeDemotion", () => {
+  const match = src.match(/function\s+_channelSubscribeTrackOnly\s*\([^)]*\)\s*\{([\s\S]*?)\n  \}/);
+  assert.ok(match, "_channelSubscribeTrackOnly factory function must be declared");
+  assert.ok(
+    !match[1].includes("handleRealtimeDemotion"),
+    "_channelSubscribeTrackOnly must NOT call handleRealtimeDemotion"
+  );
+  assert.ok(
+    match[1].includes("realtime.channel_status"),
+    "_channelSubscribeTrackOnly must track 'realtime.channel_status' event"
+  );
+});
+
+// ── Channel 2: session-changes uses diagnostic-only subscribe callback ────────
+
+test("Channel 2 uses _channelSubscribeTrackOnly (diagnostic-only, no demotion)", () => {
+  const block = src.slice(
+    src.indexOf("channel(ch2Name)") || src.indexOf("'session-changes-'"),
+    src.indexOf("channel('raids-changes')")
+  );
+  assert.ok(
+    block.includes("_channelSubscribeTrackOnly"),
+    "Channel 2 must use _channelSubscribeTrackOnly (track status but NOT demote on TIMED_OUT)"
+  );
+  assert.ok(
+    !block.includes("_channelSubscribeCallback(ch2Name)"),
+    "Channel 2 must NOT use _channelSubscribeCallback (which triggers demotion)"
+  );
+});
+
+// ── WS transport diagnostics ──────────────────────────────────────────────────
+
+test("connect() tracks WS transport open/close/error events", () => {
+  assert.ok(src.includes("realtime.ws_open"), "connect must track realtime.ws_open");
+  assert.ok(src.includes("realtime.ws_close"), "connect must track realtime.ws_close");
+  assert.ok(src.includes("realtime.ws_error"), "connect must track realtime.ws_error");
 });
 
 test("disconnect() clears all channels via removeAllChannels", () => {

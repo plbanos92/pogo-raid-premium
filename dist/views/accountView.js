@@ -166,6 +166,29 @@
       html.push('  </div>');
       html.push('</div>');
 
+      // ── Notifications section ──
+      if (typeof Notification !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+        var isIosNotInstalled = (/iP(hone|ad|od)/i.test(navigator.userAgent)) && !navigator.standalone;
+        var permission = Notification.permission;
+        html.push('<div class="account-card account-notifications-card" style="margin-top:1.25rem">');
+        html.push('  <div class="section-header">' + icon("bell", 20) + ' Notifications</div>');
+        if (isIosNotInstalled) {
+          html.push('  <div class="notif-ios-hint">');
+          html.push('    <p class="notif-ios-hint-text">Add RaidSync to your Home Screen to enable background alerts.</p>');
+          html.push('  </div>');
+        } else if (permission === 'granted') {
+          html.push('  <div class="notif-status-row">');
+          html.push('    <span class="notif-badge notif-badge-on">' + icon("check", 14) + ' Background alerts on</span>');
+          html.push('  </div>');
+        } else if (permission === 'denied') {
+          html.push('  <p class="notif-blocked-text">Notifications are blocked. To re-enable, go to your browser settings and allow notifications for this site.</p>');
+        } else {
+          html.push('  <p class="notif-hint-text">Enable background alerts so you\'ll know when it\'s your turn to raid.</p>');
+          html.push('  <button type="button" class="btn-primary notif-enable-btn" id="enableNotifsBtn" style="width:100%;margin-top:0.75rem">' + icon("bell", 16) + ' Enable Notifications</button>');
+        }
+        html.push('</div>');
+      }
+
       html.push('<div style="margin-top:1.5rem">');
       html.push('  <button class="btn-sign-out" id="signOutBtn" type="button">Sign Out</button>');
       html.push('</div>');

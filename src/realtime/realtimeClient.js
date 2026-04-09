@@ -13,6 +13,34 @@
     }, 300);
   }
 
+  // Audit helper — uses realtime_debug category for per-channel diagnostics
+  function _trackDebug(eventName, payload) {
+    if (typeof window.SessionAudit !== 'undefined' && window.SessionAudit.track) {
+      window.SessionAudit.track('realtime_debug', eventName, payload || {}, false);
+    }
+  }
+
+  // Subscribe callback factory — tracks per-channel status and demotes on error
+  function _channelSubscribeCallback(channelName) {
+    return function (status) {
+      _trackDebug('realtime.channel_status', { channel: channelName, status: status });
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        window.App.handleRealtimeDemotion(channelName, status);
+      }
+    };
+  }
+
+  // Diagnostic-only subscribe callback — tracks status without triggering demotion.
+  // Used for Channel 2 (realtime_sessions) where the DELETE handler already calls
+  // handleRealtimeDemotion directly, and TIMED_OUT on this channel is expected
+  // (realtime_sessions RLS is user-scoped; the channel may fail to subscribe
+  // depending on timing and server-side ack behaviour).
+  function _channelSubscribeTrackOnly(channelName) {
+    return function (status) {
+      _trackDebug('realtime.channel_status', { channel: channelName, status: status });
+    };
+  }
+
   var AppRealtime = {
     _client: null,
     _channels: [],
@@ -29,24 +57,29 @@
 
       client.connect(); // MUST precede channel setup
 
+      // WS transport-level events for diagnostics
+      if (client.conn) {
+        client.conn.onopen = function () { _trackDebug('realtime.ws_open', {}); };
+        client.conn.onclose = function (e) { _trackDebug('realtime.ws_close', { code: e && e.code, reason: e && e.reason }); };
+        client.conn.onerror = function () { _trackDebug('realtime.ws_error', {}); };
+      }
+
       // Channel 1: user's own queue changes — notification-only, debounced
-      var queueCh = client.channel('queue-changes-' + userId);
+      var ch1Name = 'queue-changes-' + userId;
+      var queueCh = client.channel(ch1Name);
       queueCh.on('postgres_changes',
         { event: '*', schema: 'public', table: 'raid_queues', filter: 'user_id=eq.' + userId },
         function () { scheduleRealtimeRefresh(); }
-      ).subscribe(function (status) {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          window.App.handleRealtimeDemotion();
-        }
-      });
+      ).subscribe(_channelSubscribeTrackOnly(ch1Name));
       this._channels.push(queueCh);
 
       // Channel 2: own eviction detection — DELETE only, immediate (no debounce)
-      var sessionCh = client.channel('session-changes-' + userId);
+      var ch2Name = 'session-changes-' + userId;
+      var sessionCh = client.channel(ch2Name);
       sessionCh.on('postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'realtime_sessions', filter: 'user_id=eq.' + userId },
-        function () { window.App.handleRealtimeDemotion(); }
-      ).subscribe();
+        function () { window.App.handleRealtimeDemotion(ch2Name, 'EVICTION'); }
+      ).subscribe(_channelSubscribeTrackOnly(ch2Name));
       this._channels.push(sessionCh);
 
       // Channel 3: any raid row change — triggers boss card active_hosts refresh.
@@ -55,11 +88,7 @@
       raidsCh.on('postgres_changes',
         { event: '*', schema: 'public', table: 'raids' },
         function () { scheduleRealtimeRefresh(); }
-      ).subscribe(function (status) {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          window.App.handleRealtimeDemotion();
-        }
-      });
+      ).subscribe(_channelSubscribeTrackOnly('raids-changes'));
       this._channels.push(raidsCh);
 
       // Channel 4: any raid_queues row change — fires for raid-level entries visible to
@@ -70,11 +99,7 @@
       bossQueueCh.on('postgres_changes',
         { event: '*', schema: 'public', table: 'raid_queues' },
         function () { scheduleRealtimeRefresh(); }
-      ).subscribe(function (status) {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          window.App.handleRealtimeDemotion();
-        }
-      });
+      ).subscribe(_channelSubscribeTrackOnly('boss-queue-changes'));
       this._channels.push(bossQueueCh);
 
       // Channel 5: raid_bosses update — relay for boss-level queue counter changes.
@@ -87,11 +112,7 @@
       bossMetaCh.on('postgres_changes',
         { event: '*', schema: 'public', table: 'raid_bosses' },
         function () { scheduleRealtimeRefresh(); }
-      ).subscribe(function (status) {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          window.App.handleRealtimeDemotion();
-        }
-      });
+      ).subscribe(_channelSubscribeTrackOnly('boss-meta-changes'));
       this._channels.push(bossMetaCh);
     },
 

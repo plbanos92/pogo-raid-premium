@@ -65,7 +65,11 @@
      Helpers
      ═══════════════════════════════════════════════════════════════ */
   var DEBUG_STARTUP = false;
-    var profileEditMode = false;
+  var ROLLBACK_SWITCHES = {
+    signOutCancelsHostedRaids: true,
+    beforeUnloadClosesAuditSession: true
+  };
+  var profileEditMode = false;
   var hostSuccessTimer = null;
 
   function assertRequiredGlobal(name) {
@@ -201,6 +205,56 @@
     return true;
   }
 
+  /* ═══════════════════════════════════════════════════════════════
+     PUSH NOTIFICATIONS — helpers
+     ═══════════════════════════════════════════════════════════════ */
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var rawData = atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  function subscribeToPushNotifications() {
+    var token = store.getState().config.token;
+    if (!token) return Promise.reject(new Error('Not authenticated'));
+    return fetch('/api/vapid-key', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(function(res) {
+      if (!res.ok) throw new Error('Failed to fetch VAPID key');
+      return res.json();
+    }).then(function(data) {
+      var applicationServerKey = urlBase64ToUint8Array(data.key);
+      return navigator.serviceWorker.ready.then(function(reg) {
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey
+        });
+      });
+    }).then(function(subscription) {
+      var keys = subscription.toJSON ? subscription.toJSON().keys : subscription.keys;
+      return fetch('/api/rest/v1/rpc/upsert_push_subscription', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+          app_mode: navigator.standalone ? 'pwa' : 'browser'
+        })
+      }).then(function(res) {
+        if (!res.ok) throw new Error('Failed to save subscription');
+      SessionAudit.track('notif', 'notif.subscription_created', null, false);
+    });
+  }
+
   function switchView(view) {
     formPersist.save('app', 'view', view);
     var _prevView = store.getState().view;
@@ -245,7 +299,12 @@
   async function initRealtimeMode(api) {
     try {
       var config = await api.getRealtimeConfig();
+      SessionAudit.track('realtime_debug', 'realtime.config_fetched', {
+        url: config.url || null,
+        anonKey_prefix: config.anonKey ? config.anonKey.slice(0, 10) : null
+      }, false);
       var result = await api.claimRealtimeSlot();
+      SessionAudit.track('realtime_debug', 'realtime.slot_claimed', { granted: !!result.granted }, false);
       if (result.granted) {
         var userId = store.getState().config.userId;
         global.AppRealtime.connect(
@@ -279,6 +338,7 @@
       }
     } catch (e) {
       console.warn('[Realtime] init failed, staying in polling mode', e);
+      SessionAudit.track('realtime_debug', 'realtime.init_failed', { error: e && e.message }, false);
     }
   }
 
@@ -314,9 +374,23 @@
   // Intentional evictions (realtime_sessions DELETE) also come through here but are capped
   // the same way — the slot RPC will simply return granted=false if the slot was legitimately
   // revoked, so retries are harmless.
-  function handleRealtimeDemotion() {
+  // Demotion guard: multiple channels can fire simultaneously on a WS drop. Only the first
+  // caller proceeds; the rest are suppressed and logged for diagnostics.
+  var _demotionInFlight = false;
+  function handleRealtimeDemotion(sourceChannel, sourceStatus) {
+    if (_demotionInFlight) {
+      SessionAudit.track('realtime_debug', 'realtime.demotion_suppressed', {
+        channel: sourceChannel || null, status: sourceStatus || null, reason: 'already_in_teardown'
+      }, false);
+      return;
+    }
+    _demotionInFlight = true;
+    SessionAudit.track('realtime_debug', 'realtime.demotion_triggered', {
+      channel: sourceChannel || null, status: sourceStatus || null, retryCount: _realtimeRetryCount
+    }, false);
     var api = getApi();
     teardownRealtimeMode(api).then(function () {
+      _demotionInFlight = false;
       if (_realtimeRetryCount >= 3) {
         SessionAudit.track('realtime', 'realtime.retry_exhausted', { attempts: _realtimeRetryCount }, false);
         return;
@@ -1025,6 +1099,22 @@
         return;
       }
 
+      // Enable background notifications
+      if (e.target.closest('#enableNotifsBtn')) {
+        Notification.requestPermission().then(function(permission) {
+          SessionAudit.track('notif', permission === 'granted' ? 'notif.permission_granted' : 'notif.permission_denied', null, false);
+          renderAccountView(store.getState());
+          if (permission !== 'granted') return;
+          subscribeToPushNotifications().then(function() {
+            showToast('Background notifications enabled!', 'success');
+          }).catch(function(err) {
+            console.warn('[Push] Subscribe failed:', err);
+            showToast('Could not enable notifications. Please try again.', 'error');
+          });
+        });
+        return;
+      }
+
       // Tab switch — no re-render, just DOM toggle
       var tab = e.target.closest("[data-auth-tab]");
       if (tab) {
@@ -1056,7 +1146,6 @@
       var target = e.target.closest("#signOutBtn");
       if (target) {
         SessionAudit.track('session', 'session.closed', { reason: 'sign_out' }, true);
-        SessionAudit.closeSession('sign_out');
         // Leave active queues on sign-out (fire-and-forget).
         // Capture api now — token is still valid, store still populated.
         // 'raiding' excluded: player is in Pokémon GO, web UI Leave button also excludes it.
@@ -1067,6 +1156,14 @@
             _signOutApi.leaveQueue(q.id, 'Signed out').catch(function () {});
           }
         });
+        if (ROLLBACK_SWITCHES.signOutCancelsHostedRaids) {
+          (store.getState().hosts || []).forEach(function (h) {
+            if (h.status === 'open' || h.status === 'lobby' || h.status === 'raiding') {
+              _signOutApi.cancelRaid(h.id).catch(function () {});
+            }
+          });
+        }
+        SessionAudit.closeSession('sign_out');
 
         // Tear down realtime BEFORE clearing the token — releaseRealtimeSlot needs a valid JWT.
         // Capture api now while the token is still in the store.
@@ -2079,6 +2176,14 @@
       profileEditMode = formPersist.load('app', 'profileEditMode') === 'true';
     }
 
+    // Handle notification click deep-link (?notify=queues)
+    var notifyParam = new URLSearchParams(location.search).get('notify');
+    if (notifyParam === 'queues' && isAuthed()) {
+      SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
+      store.setState({ view: 'queues' });
+      history.replaceState(null, '', location.pathname);
+    }
+
     // Auto-redirect unauthenticated visitors to Account screen on page load
     if (!isAuthed()) {
       store.setState({ view: "account" });
@@ -2184,6 +2289,10 @@
     // Release realtime slot on page unload (fire-and-forget, keepalive ensures completion)
     window.addEventListener('beforeunload', function () {
       var s = store.getState();
+      if (ROLLBACK_SWITCHES.beforeUnloadClosesAuditSession && s.config && s.config.token) {
+        SessionAudit.track('session', 'session.closed', { reason: 'page_close' }, false);
+        SessionAudit.closeSessionKeepalive('page_close');
+      }
       if (s.realtimeMode === 'realtime' && s.config && s.config.token) {
         fetch('/api/rest/v1/rpc/release_realtime_slot', {
           method: 'POST',
@@ -2281,6 +2390,24 @@
     setInterval(updateCountdowns, 1000);
 
     SessionAudit.track('lifecycle', 'lifecycle.page_load', null, false);
+
+    // Register Service Worker for background push notifications
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function(err) {
+        console.warn('[SW] Registration failed:', err);
+      });
+      // Handle messages from the Service Worker (e.g. notification tap on an existing window)
+      navigator.serviceWorker.addEventListener('message', function(event) {
+        if (!event.data) return;
+        if (event.data.type === 'NOTIF_CLICK') {
+          SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
+          if (isAuthed()) {
+            store.setState({ view: 'queues' });
+            render(store.getState());
+          }
+        }
+      });
+    }
 
     // Start the adaptive poll cycle after initial data load
     refreshData().then(function () {
