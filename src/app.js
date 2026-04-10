@@ -94,6 +94,9 @@
     if (DEBUG_STARTUP || global.AppConstants) {
       assertRequiredGlobal('AppConstants');
     }
+    if (DEBUG_STARTUP || global.QueueFSM) {
+      assertRequiredGlobal('QueueFSM');
+    }
     if (DEBUG_STARTUP || global.AppHtml) {
       assertRequiredGlobal('AppHtml');
     }
