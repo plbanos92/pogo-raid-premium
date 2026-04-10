@@ -351,6 +351,12 @@
           body: {}
         });
       },
+      adminListUsers: function (page, pageSize) {
+        return request('/rest/v1/rpc/admin_list_users', {
+          method: 'POST',
+          body: { p_page: page || 0, p_page_size: pageSize || 20 }
+        });
+      },
       getRealtimeSlotStats: function () {
         return request('/rest/v1/rpc/get_realtime_slot_stats', { method: 'POST', body: {} });
       },

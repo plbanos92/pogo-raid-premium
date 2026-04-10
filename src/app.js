@@ -34,6 +34,10 @@
     adminEditingId: null,
     adminShowAddForm: false,
     adminTab: 'bosses',
+    adminUsers: [],
+    adminUsersPage: 0,
+    adminUsersTotal: 0,
+    adminUsersLoading: false,
     appConfig: null,
     realtimeMode: 'polling',
     realtimeRetrying: false,
@@ -466,6 +470,10 @@
       lobbyInfoOpen: {},
       adminBosses: [],
       adminEditingId: null,
+      adminUsers: [],
+      adminUsersPage: 0,
+      adminUsersTotal: 0,
+      adminUsersLoading: false,
       syncCursor: null,
       managingLobby: null,
       lobbyQueues: [],
@@ -1205,7 +1213,7 @@
         store.setState({
           config: Object.assign({}, store.getState().config, { token: "", userId: "" }),
           view: "account",
-          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
+          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, adminUsers: [], adminUsersPage: 0, adminUsersTotal: 0, adminUsersLoading: false, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
         });
         sessionMachine.transition(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
         setTimeout(function () { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 0);
@@ -1858,6 +1866,24 @@
     });
   }
 
+  function loadAdminUsers(page) {
+    var api = getApi();
+    store.setState({ adminUsersLoading: true });
+    render(store.getState());
+    api.adminListUsers(page || 0, 20)
+      .then(function (rows) {
+        rows = Array.isArray(rows) ? rows : [];
+        var total = rows.length > 0 && rows[0].total_count != null ? Number(rows[0].total_count) : rows.length;
+        store.setState({ adminUsers: rows, adminUsersPage: page || 0, adminUsersTotal: total, adminUsersLoading: false });
+        render(store.getState());
+      })
+      .catch(function (err) {
+        store.setState({ adminUsersLoading: false });
+        showToast('Failed to load users: ' + (err.message || 'Unknown error'), 'error');
+        render(store.getState());
+      });
+  }
+
   function initAdminActions() {
     var wrap = qs("adminContent");
     if (!wrap) return;
@@ -1866,7 +1892,24 @@
       // Admin tab switching
       var tabBtn = e.target.closest('[data-admin-tab]');
       if (tabBtn) {
-        store.setState({ adminTab: tabBtn.dataset.adminTab });
+        var newTab = tabBtn.dataset.adminTab;
+        store.setState({ adminTab: newTab });
+        render(store.getState());
+        if (newTab === 'users' && !store.getState().adminUsers.length) {
+          loadAdminUsers(0);
+        }
+        return;
+      }
+
+      // Users pagination
+      if (e.target.closest('#adminUsersPrev')) {
+        var curPage = store.getState().adminUsersPage || 0;
+        if (curPage > 0) loadAdminUsers(curPage - 1);
+        return;
+      }
+      if (e.target.closest('#adminUsersNext')) {
+        var curPage2 = store.getState().adminUsersPage || 0;
+        loadAdminUsers(curPage2 + 1);
         return;
       }
 

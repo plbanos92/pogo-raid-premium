@@ -194,6 +194,90 @@
     ].join('\n');
   }
 
+  function fmtShortDate(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      var d = new Date(isoStr);
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) { return '—'; }
+  }
+
+  function fmtRelativeDate(isoStr) {
+    if (!isoStr) return 'Never';
+    try {
+      var secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (secs < 60)  return 'Just now';
+      if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+      if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+      if (secs < 86400 * 30) return Math.floor(secs / 86400) + 'd ago';
+      return fmtShortDate(isoStr);
+    } catch (e) { return '—'; }
+  }
+
+  function renderUsersPanel(state, deps) {
+    var escapeHtml = deps.escapeHtml || function (v) { return String(v || ''); };
+    var icon = deps.icon || function () { return ''; };
+    var users = state.adminUsers || [];
+    var page = state.adminUsersPage || 0;
+    var total = state.adminUsersTotal || 0;
+    var pageSize = 20;
+    var loading = state.adminUsersLoading;
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    if (loading && !users.length) {
+      return '<div class="admin-loading-state">' + icon('loader', 24) + '<p>Loading users…</p></div>';
+    }
+    if (!loading && !users.length) {
+      return '<div class="admin-empty-state"><p>' + icon('users', 32) + '</p><p>No users found.</p></div>';
+    }
+
+    var cardsHtml = users.map(function (u) {
+      var name = escapeHtml(u.in_game_name || u.display_name || 'Unnamed');
+      var email = escapeHtml(u.email || '—');
+      var badgesHtml = '';
+      if (u.is_admin) badgesHtml += '<span class="admin-user-badge admin-user-badge--admin">' + icon('shield', 11) + ' Admin</span>';
+      if (u.is_vip)   badgesHtml += '<span class="admin-user-badge admin-user-badge--vip">' + icon('crown', 11) + ' VIP</span>';
+      var vipLine = '';
+      if (u.is_vip && (u.vip_since || u.vip_until)) {
+        vipLine = '<div class="admin-user-meta-row">' +
+          '<span class="admin-user-meta-label">VIP:</span> ' +
+          (u.vip_since ? fmtShortDate(u.vip_since) : '?') + ' → ' +
+          (u.vip_until ? fmtShortDate(u.vip_until) : 'ongoing') +
+          '</div>';
+      }
+      var fcLine = u.friend_code
+        ? '<div class="admin-user-meta-row"><span class="admin-user-meta-label">FC:</span> ' + escapeHtml(u.friend_code) + '</div>'
+        : '';
+      return [
+        '<div class="admin-user-card">',
+        '  <div class="admin-user-card-main">',
+        '    <div class="admin-user-avatar">' + icon('user', 18) + '</div>',
+        '    <div class="admin-user-info">',
+        '      <div class="admin-user-name">' + name + (badgesHtml ? ' ' + badgesHtml : '') + '</div>',
+        '      <div class="admin-user-email">' + email + '</div>',
+        fcLine,
+        vipLine,
+        '    </div>',
+        '    <div class="admin-user-dates">',
+        '      <div class="admin-user-date-row"><span class="admin-user-meta-label">Joined</span>' + fmtShortDate(u.joined_at) + '</div>',
+        '      <div class="admin-user-date-row"><span class="admin-user-meta-label">Last seen</span>' + fmtRelativeDate(u.last_sign_in_at) + '</div>',
+        '    </div>',
+        '  </div>',
+        '</div>'
+      ].join('\n');
+    }).join('\n');
+
+    var paginationHtml = totalPages > 1 ? [
+      '<div class="admin-pagination">',
+      '  <button class="admin-page-btn" id="adminUsersPrev" type="button"' + (page <= 0 ? ' disabled' : '') + '>' + icon('chevronLeft', 16) + ' Prev</button>',
+      '  <span class="admin-page-info">Page ' + (page + 1) + ' of ' + totalPages + ' &nbsp;·&nbsp; ' + total + ' users</span>',
+      '  <button class="admin-page-btn" id="adminUsersNext" type="button"' + (page >= totalPages - 1 ? ' disabled' : '') + '>Next ' + icon('chevronRight', 16) + '</button>',
+      '</div>'
+    ].join('\n') : '<div class="admin-page-info" style="margin-bottom:1rem;">' + total + ' user' + (total !== 1 ? 's' : '') + '</div>';
+
+    return paginationHtml + '<div id="adminUsersList">' + cardsHtml + '</div>';
+  }
+
   AppViews.renderAdmin = function renderAdmin(state, deps) {
     deps = deps || {};
     state = state || {};
@@ -233,17 +317,29 @@
       return (a.name || "").localeCompare(b.name || "");
     });
 
+    // Live counters from boss_queue_stats (public bosses list, keyed by id)
+    var liveBossMap = {};
+    (state.bosses || []).forEach(function (b) { liveBossMap[b.id] = b; });
+
     var listHtml = sorted.length === 0
       ? '<div class="admin-empty-state"><p>' + icon('clipboard', 32) + '</p><p>No bosses yet — tap <strong>+ Add Boss</strong> to create one.</p></div>'
       : sorted.map(function (boss) {
           var isEditing = editingId === boss.id;
           var statusBadge = renderBossStatusBadge(boss);
           var tierStars = renderTierStars(boss.tier);
-          var pidStr = boss.pokemon_id ? 'pokemon_id: ' + escapeHtml(String(boss.pokemon_id)) : '';
-          var cpStr = boss.cp ? 'CP: ' + escapeHtml(String(boss.cp)) : '';
-          var metaParts = [pidStr, cpStr].filter(Boolean).join('  |  ');
-          var fromStr = boss.available_from ? fmtDatetimeLocal(boss.available_from) : '—';
-          var untilStr = boss.available_until ? fmtDatetimeLocal(boss.available_until) : '—';
+          var types = Array.isArray(boss.types) ? boss.types : [];
+          var typeBadges = types.map(function (t) {
+            return '<span class="tag-type tag-type--sm"><img src="/assets/type-icons/' + escapeHtml(t.toLowerCase()) + '.svg" alt="">' + escapeHtml(t) + '</span>';
+          }).join('');
+          var fromStr = boss.available_from ? fmtShortDate(boss.available_from) : '—';
+          var untilStr = boss.available_until ? fmtShortDate(boss.available_until) : '—';
+          var live = liveBossMap[boss.id] || {};
+          var queueCount = typeof live.queue_length === 'number' ? live.queue_length : '—';
+          var hostCount  = typeof live.active_hosts === 'number'  ? live.active_hosts  : '—';
+          var cpStr = boss.cp ? Number(boss.cp).toLocaleString() : '—';
+          var pokemonId = boss.pokemon_id ? '#' + boss.pokemon_id : '';
+          var imgUrl = boss.image_url || ('/assets/silhouettes/png/' + (boss.pokemon_id || 'unknown') + '.png');
+
           if (isEditing) {
             return [
               '<div class="admin-boss-card editing" data-boss-id="' + escapeHtml(boss.id) + '">',
@@ -257,14 +353,36 @@
               '</div>'
             ].join("\n");
           }
+
           return [
             '<div class="admin-boss-card" data-boss-id="' + escapeHtml(boss.id) + '">',
-            '  <div class="admin-card-header">',
-            '    <div class="admin-card-title-row">' + statusBadge + ' <strong>' + escapeHtml(boss.name) + '</strong> ' + tierStars + '</div>',
-            '    <button class="admin-edit-boss" data-boss-id="' + escapeHtml(boss.id) + '" title="Edit">' + icon('pencil', 16) + '</button>',
+            '  <div class="admin-boss-card-inner">',
+            '    <div class="admin-boss-img-wrap">',
+            '      <img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(boss.name) + '" class="admin-boss-img" onerror="this.style.display=\'none\'">',
+            '    </div>',
+            '    <div class="admin-boss-details">',
+            '      <div class="admin-card-title-row">',
+            '        ' + statusBadge,
+            '        <strong class="admin-boss-name">' + escapeHtml(boss.name) + '</strong>',
+            '        ' + tierStars,
+            '      </div>',
+            '      <div class="admin-boss-type-row">' + (typeBadges || '<span class="admin-boss-no-type">No types</span>') + '</div>',
+            '      <div class="admin-boss-stats-row">',
+            '        <span class="admin-boss-stat">' + icon('hash', 12) + ' ' + escapeHtml(pokemonId || '—') + '</span>',
+            '        <span class="admin-boss-stat">' + icon('zap', 12) + ' CP ' + cpStr + '</span>',
+            '        <span class="admin-boss-stat">' + icon('users', 12) + ' ' + queueCount + ' queued</span>',
+            '        <span class="admin-boss-stat">' + icon('swords', 12) + ' ' + hostCount + ' hosts</span>',
+            '      </div>',
+            '      <div class="admin-boss-dates-row">',
+            '        <span class="admin-boss-date-label">From</span> <span class="admin-boss-date-val">' + escapeHtml(fromStr) + '</span>',
+            '        <span class="admin-boss-date-sep">→</span>',
+            '        <span class="admin-boss-date-label">Until</span> <span class="admin-boss-date-val">' + escapeHtml(untilStr) + '</span>',
+            '      </div>',
+            '    </div>',
+            '    <div class="admin-boss-actions">',
+            '      <button class="admin-edit-boss" data-boss-id="' + escapeHtml(boss.id) + '" title="Edit">' + icon('pencil', 16) + '</button>',
+            '    </div>',
             '  </div>',
-            metaParts ? '  <div class="admin-card-meta">' + metaParts + '</div>' : '',
-            '  <div class="admin-card-meta">From: ' + escapeHtml(fromStr) + '  &nbsp;→&nbsp;  To: ' + escapeHtml(untilStr) + '</div>',
             '</div>'
           ].join("\n");
         }).join("\n");
@@ -287,15 +405,22 @@
       viewTitleHtml('shield', 'Admin'),
       '</div>',
       '<div class="admin-tab-bar">',
-      '  <button class="admin-tab' + (activeTab === 'bosses' ? ' active' : '') + '" data-admin-tab="bosses">Bosses</button>',
-      '  <button class="admin-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-admin-tab="settings">App Settings</button>',
-      '  <button class="admin-tab' + (activeTab === 'audit' ? ' active' : '') + '" data-admin-tab="audit">Audit</button>',
+      '  <button class="admin-tab' + (activeTab === 'bosses'   ? ' active' : '') + '" data-admin-tab="bosses">Bosses</button>',
+      '  <button class="admin-tab' + (activeTab === 'users'    ? ' active' : '') + '" data-admin-tab="users">Users</button>',
+      '  <button class="admin-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-admin-tab="settings">Settings</button>',
+      '  <button class="admin-tab' + (activeTab === 'audit'    ? ' active' : '') + '" data-admin-tab="audit">Audit</button>',
       '</div>',
+
       '<div class="admin-tab-panel' + (activeTab === 'bosses' ? ' active' : '') + '">',
       '  <button class="btn-primary admin-toggle-add" id="adminToggleAdd" type="button">' + icon('plus', 16) + ' Add Boss</button>',
       addFormHtml,
       '  <div id="adminBossList">' + listHtml + '</div>',
       '</div>',
+
+      '<div class="admin-tab-panel' + (activeTab === 'users' ? ' active' : '') + '" id="admin-panel-users">',
+      renderUsersPanel(state, { escapeHtml: escapeHtml, icon: icon }),
+      '</div>',
+
       '<div class="admin-tab-panel' + (activeTab === 'settings' ? ' active' : '') + '">',
       '  <div class="admin-settings-card card">',
       '    <div class="card-header">',
@@ -313,6 +438,7 @@
       '    </div>',
       '  </div>',
       '</div>',
+
       '<div class="admin-tab-panel' + (activeTab === 'audit' ? ' active' : '') + '" id="admin-panel-audit">',
       renderAuditConfigPanel(state, { escapeHtml: escapeHtml, icon: icon }),
       renderAuditPurgePanel({ icon: icon }),
