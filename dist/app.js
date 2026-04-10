@@ -37,6 +37,7 @@
     adminUsers: [],
     adminUsersPage: 0,
     adminUsersTotal: 0,
+    adminUsersPageSize: 20,
     adminUsersLoading: false,
     appConfig: null,
     realtimeMode: 'polling',
@@ -473,6 +474,7 @@
       adminUsers: [],
       adminUsersPage: 0,
       adminUsersTotal: 0,
+      adminUsersPageSize: 20,
       adminUsersLoading: false,
       syncCursor: null,
       managingLobby: null,
@@ -1213,7 +1215,7 @@
         store.setState({
           config: Object.assign({}, store.getState().config, { token: "", userId: "" }),
           view: "account",
-          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, adminUsers: [], adminUsersPage: 0, adminUsersTotal: 0, adminUsersLoading: false, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
+          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, adminUsers: [], adminUsersPage: 0, adminUsersTotal: 0, adminUsersPageSize: 20, adminUsersLoading: false, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
         });
         sessionMachine.transition(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
         setTimeout(function () { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 0);
@@ -1866,15 +1868,16 @@
     });
   }
 
-  function loadAdminUsers(page) {
+  function loadAdminUsers(page, pageSize) {
     var api = getApi();
+    var ps = pageSize || store.getState().adminUsersPageSize || 20;
     store.setState({ adminUsersLoading: true });
     render(store.getState());
-    api.adminListUsers(page || 0, 20)
+    api.adminListUsers(page || 0, ps)
       .then(function (rows) {
         rows = Array.isArray(rows) ? rows : [];
         var total = rows.length > 0 && rows[0].total_count != null ? Number(rows[0].total_count) : rows.length;
-        store.setState({ adminUsers: rows, adminUsersPage: page || 0, adminUsersTotal: total, adminUsersLoading: false });
+        store.setState({ adminUsers: rows, adminUsersPage: page || 0, adminUsersTotal: total, adminUsersPageSize: ps, adminUsersLoading: false });
         render(store.getState());
       })
       .catch(function (err) {
@@ -2049,6 +2052,14 @@
             purgeAllBtn.disabled = false;
             purgeAllBtn.textContent = purgeAllOrig;
           });
+        return;
+      }
+    });
+
+    wrap.addEventListener('change', function (e) {
+      if (e.target && e.target.id === 'adminUsersPageSize') {
+        var ps = parseInt(e.target.value, 10);
+        if (!isNaN(ps) && ps > 0) loadAdminUsers(0, ps);
         return;
       }
     });

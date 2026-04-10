@@ -220,7 +220,7 @@
     var users = state.adminUsers || [];
     var page = state.adminUsersPage || 0;
     var total = state.adminUsersTotal || 0;
-    var pageSize = 20;
+    var pageSize = state.adminUsersPageSize || 20;
     var loading = state.adminUsersLoading;
     var totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -267,13 +267,22 @@
       ].join('\n');
     }).join('\n');
 
-    var paginationHtml = totalPages > 1 ? [
+    function pageSizeOption(val) {
+      return '<option value="' + val + '"' + (pageSize === val ? ' selected' : '') + '>' + val + ' / page</option>';
+    }
+
+    var paginationHtml = [
       '<div class="admin-pagination">',
       '  <button class="admin-page-btn" id="adminUsersPrev" type="button"' + (page <= 0 ? ' disabled' : '') + '>' + icon('chevronLeft', 16) + ' Prev</button>',
-      '  <span class="admin-page-info">Page ' + (page + 1) + ' of ' + totalPages + ' &nbsp;·&nbsp; ' + total + ' users</span>',
+      '  <span class="admin-page-info">Page ' + (page + 1) + ' of ' + totalPages + ' &nbsp;·&nbsp; ' + total + ' user' + (total !== 1 ? 's' : '') + '</span>',
+      '  <select id="adminUsersPageSize" class="admin-page-size-select" aria-label="Page size">',
+      pageSizeOption(10),
+      pageSizeOption(20),
+      pageSizeOption(50),
+      '  </select>',
       '  <button class="admin-page-btn" id="adminUsersNext" type="button"' + (page >= totalPages - 1 ? ' disabled' : '') + '>Next ' + icon('chevronRight', 16) + '</button>',
       '</div>'
-    ].join('\n') : '<div class="admin-page-info" style="margin-bottom:1rem;">' + total + ' user' + (total !== 1 ? 's' : '') + '</div>';
+    ].join('\n');
 
     return paginationHtml + '<div id="adminUsersList">' + cardsHtml + '</div>';
   }

@@ -2631,6 +2631,14 @@ a { text-decoration: none; color: inherit; }
 .admin-page-info {
   font-size: 0.8125rem; color: var(--slate-500); font-weight: 500;
 }
+.admin-page-size-select {
+  background: var(--white); border: 1px solid var(--indigo-100);
+  border-radius: 0.625rem; padding: 0.35rem 0.625rem;
+  font-size: 0.8125rem; font-weight: 600; color: var(--indigo-600);
+  cursor: pointer; outline: none;
+}
+.admin-page-size-select:hover { border-color: var(--indigo-200); }
+.admin-page-size-select:focus { border-color: var(--indigo-400); }
 
 /* Admin — loading state */
 .admin-loading-state {
