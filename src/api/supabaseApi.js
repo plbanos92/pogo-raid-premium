@@ -210,6 +210,18 @@
           body: { p_raid_id: raidId }
         });
       },
+      hatchRaid: function (raidId) {
+        return request("/rest/v1/rpc/hatch_raid", {
+          method: "POST",
+          body: { p_raid_id: raidId }
+        });
+      },
+      autoHatchExpiredEggs: function () {
+        return request("/rest/v1/rpc/auto_hatch_expired_eggs", {
+          method: "POST",
+          body: {}
+        });
+      },
       listRaidQueue: function (raidId) {
         return request("/rest/v1/rpc/list_raid_queue", {
           method: "POST",

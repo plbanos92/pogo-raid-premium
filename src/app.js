@@ -536,7 +536,13 @@
         .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); })
         .then(function () { return api.touchHostActivity(h.id).catch(function () {}); });
     });
-    return Promise.all(tasks).then(function () {});
+    return Promise.all(tasks).then(function () {
+      var hasEggHost = hosts.some(function (h) { return h.status === 'egg'; });
+      if (!hasEggHost) return;
+      return api.autoHatchExpiredEggs().then(function (hatched) {
+        if (hatched > 0) return refreshData();
+      }).catch(function () {});
+    });
   }
 
   function buildBossesFromRaids(raids) {
@@ -1644,7 +1650,7 @@
     qs("queuesContent").addEventListener("click", function (e) {
       var origin = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
       if (!origin || typeof origin.closest !== "function") return;
-      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]") || origin.closest("[data-rejoin-boss]") || origin.closest("[data-delete-queue]") || origin.closest("[data-delete-lobby]") || origin.closest("[data-dismiss-host-success]");
+      var target = origin.closest("[data-leave]") || origin.closest("[data-keep]") || origin.closest("[data-view]") || origin.closest("[data-friend-sent]") || origin.closest("[data-finish-raiding]") || origin.closest("[data-manage-lobby]") || origin.closest("[data-close-lobby]") || origin.closest("[data-start-raid]") || origin.closest("[data-host-finish]") || origin.closest("[data-copy-fc]") || origin.closest("[data-toggle-lobby-qr]") || origin.closest("[data-toggle-all-lobby-qrs]") || origin.closest("[data-toggle-lobby-info]") || origin.closest("[data-rejoin-boss]") || origin.closest("[data-delete-queue]") || origin.closest("[data-delete-lobby]") || origin.closest("[data-dismiss-host-success]") || origin.closest("[data-hatch-raid]");
       if (!target) return;
 
       // Handle "Find Raids" / "Host Raid" nav buttons in empty state
@@ -1697,6 +1703,22 @@
         if (!currentInfo[toggleLobbyInfo]) delete currentInfo[toggleLobbyInfo];
         store.setState({ lobbyInfoOpen: currentInfo });
         render(store.getState());
+        return;
+      }
+
+      var hatchRaid = target.getAttribute("data-hatch-raid");
+      if (hatchRaid) {
+        setLoading(true);
+        SessionAudit.track('host', 'host.hatch_raid', { raid_id: hatchRaid }, true);
+        api.hatchRaid(hatchRaid).then(function () {
+          showToast("Lobby open! Invites going out…", "success");
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          _trackApiError(err, 'hatchRaid');
+          showToast("Open lobby failed: " + (err.message || "unknown error"), "error");
+          return refreshData().catch(function () {});
+        }).finally(function () { setLoading(false); });
         return;
       }
 
