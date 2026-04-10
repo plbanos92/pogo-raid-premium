@@ -1587,12 +1587,17 @@
       setLoading(true);
       var now = new Date();
       var end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+      var isEgg = !!(qs('hostEggToggle') && qs('hostEggToggle').checked);
+      var hatchTimeRaw = isEgg && qs('hostHatchTime') ? qs('hostHatchTime').value : '';
+      var hatchTimeIso = hatchTimeRaw ? new Date(hatchTimeRaw).toISOString() : undefined;
       getApi().createRaid({
         hostUserId: store.getState().config.userId,
         raidBossId: bossId, friendCode: code,
         locationName: "Remote Raid",
         startTime: now.toISOString(), endTime: end.toISOString(),
-        capacity: spots
+        capacity: spots,
+        status: isEgg ? 'egg' : undefined,
+        hatchTime: hatchTimeIso
       }).then(function () {
         SessionAudit.track('host', 'host.create_raid', { boss_id: bossId, capacity: spots }, true);
         formPersist.clear('hostForm');
@@ -1619,6 +1624,20 @@
         submitBtn.disabled = false;
       }).finally(function () { setLoading(false); });
     });
+    var eggToggle = qs('hostEggToggle');
+    var hatchTimeGroup = qs('hostHatchTimeGroup');
+    var submitBtnEl = qs('hostSubmitBtn');
+    if (eggToggle && hatchTimeGroup && submitBtnEl) {
+      eggToggle.addEventListener('change', function () {
+        if (eggToggle.checked) {
+          hatchTimeGroup.classList.remove('hidden');
+          submitBtnEl.textContent = 'Start Egg Hosting';
+        } else {
+          hatchTimeGroup.classList.add('hidden');
+          submitBtnEl.textContent = 'Start Hosting';
+        }
+      });
+    }
   }
 
   function initQueueActions() {
