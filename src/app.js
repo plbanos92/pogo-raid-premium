@@ -257,7 +257,8 @@
         })
       }).then(function(res) {
         if (!res.ok) throw new Error('Failed to save subscription');
-      SessionAudit.track('notif', 'notif.subscription_created', null, false);
+        SessionAudit.track('notif', 'notif.subscription_created', null, false);
+      });
     });
   }
 
