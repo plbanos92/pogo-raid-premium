@@ -55,6 +55,15 @@
     WRAPPING_UP:     'wrapping_up'
   });
 
+  var VIEW_KEY = Object.freeze({
+    HOME:    'home',
+    HOST:    'host',
+    QUEUES:  'queues',
+    VIP:     'vip',
+    ACCOUNT: 'account',
+    ADMIN:   'admin'
+  });
+
   // ── Valid transitions ─────────────────────────────────────────────────────
 
   var VALID_QUEUE_TRANSITIONS = Object.freeze({
@@ -208,6 +217,7 @@
     POLL_HEAT:     POLL_HEAT,
     LOBBY_STATE:   LOBBY_STATE,
     JOINER_STATE:  JOINER_STATE,
+    VIEW_KEY:      VIEW_KEY,
 
     // Transition guards
     isValidTransition:      isValidTransition,

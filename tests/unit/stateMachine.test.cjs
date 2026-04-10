@@ -753,3 +753,73 @@ test("app.js passes QueueFSM into renderQueues deps", () => {
     "renderQueuesView() in app.js must pass QueueFSM: global.QueueFSM into the deps object"
   );
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 17. PHASE 7 — VIEW_KEY enum + switchView guard
+//
+// Guards that:
+//   a) VIEW_KEY enum is defined in queueStateMachine.js with all 6 keys
+//   b) switchView validates against VIEW_KEY before proceeding
+//   c) Raw view string literals are replaced with QueueFSM.VIEW_KEY constants
+// ═══════════════════════════════════════════════════════════════
+
+test("queueStateMachine.js defines VIEW_KEY enum with all 6 view keys", () => {
+  var required = ['home', 'host', 'queues', 'vip', 'account', 'admin'];
+  required.forEach(function (v) {
+    assert.equal(
+      queueFsmSource.indexOf("'" + v + "'") >= 0,
+      true,
+      "VIEW_KEY in queueStateMachine.js must include '" + v + "'"
+    );
+  });
+  assert.equal(
+    /VIEW_KEY\s*:\s*VIEW_KEY/.test(queueFsmSource), true,
+    "VIEW_KEY must be exported on the QueueFSM public API object"
+  );
+});
+
+test("switchView in app.js guards against unknown view keys via QueueFSM.VIEW_KEY", () => {
+  assert.equal(
+    /function\s+switchView[\s\S]{0,200}QueueFSM\.VIEW_KEY/.test(appSource), true,
+    "switchView must reference QueueFSM.VIEW_KEY early in its body for the guard"
+  );
+  assert.equal(
+    /function\s+switchView[\s\S]{0,300}nav\.view_invalid/.test(appSource), true,
+    "switchView must call SessionAudit.track with 'nav.view_invalid' on unknown keys"
+  );
+});
+
+test("app.js has no raw switchView('home') calls remaining", () => {
+  assert.equal(
+    /switchView\(\s*['"]home['"]\s*\)/.test(appSource), false,
+    "app.js must not contain switchView('home') — use switchView(QueueFSM.VIEW_KEY.HOME)"
+  );
+});
+
+test("app.js has no raw switchView('queues') calls remaining", () => {
+  assert.equal(
+    /switchView\(\s*['"]queues['"]\s*\)/.test(appSource), false,
+    "app.js must not contain switchView('queues') — use switchView(QueueFSM.VIEW_KEY.QUEUES)"
+  );
+});
+
+test("app.js has no raw switchView('account') calls remaining", () => {
+  assert.equal(
+    /switchView\(\s*['"]account['"]\s*\)/.test(appSource), false,
+    "app.js must not contain switchView('account') — use switchView(QueueFSM.VIEW_KEY.ACCOUNT)"
+  );
+});
+
+test("app.js has no raw store.setState({ view: 'queues' }) remaining", () => {
+  assert.equal(
+    /store\.setState\(\s*\{\s*view\s*:\s*['"]queues['"]\s*\}/.test(appSource), false,
+    "app.js must not contain store.setState({ view: 'queues' }) — use QueueFSM.VIEW_KEY.QUEUES"
+  );
+});
+
+test("app.js has no raw store.setState({ view: 'account' }) remaining", () => {
+  assert.equal(
+    /store\.setState\(\s*\{\s*view\s*:\s*['"]account['"]\s*\}/.test(appSource), false,
+    "app.js must not contain store.setState({ view: 'account' }) — use QueueFSM.VIEW_KEY.ACCOUNT"
+  );
+});

@@ -262,6 +262,12 @@
   }
 
   function switchView(view) {
+    var _validViews = Object.keys(QueueFSM.VIEW_KEY).map(function(k) { return QueueFSM.VIEW_KEY[k]; });
+    if (_validViews.indexOf(view) < 0) {
+      console.warn('[RaidSync] switchView: unknown view key "' + view + '"');
+      SessionAudit.track('nav', 'nav.view_invalid', { attempted: view }, false);
+      return;
+    }
     formPersist.save('app', 'view', view);
     var _prevView = store.getState().view;
     store.setState({ view: view, hostSuccess: false });
@@ -295,7 +301,7 @@
   function ensureAuth() {
     if (isAuthed()) return true;
     showToast("Please sign in to continue.", "info");
-    switchView("account");
+    switchView(QueueFSM.VIEW_KEY.ACCOUNT);
     return false;
   }
 
@@ -1317,7 +1323,7 @@
         formPersist.clear('authForm');
         store.setState({ config: cfg, authMode: "signin", pendingConfirmation: null });
         showToast(mode === "signup" ? "Account created! Welcome aboard." : "You're signed in. Welcome back!", "success");
-        switchView("home");
+        switchView(QueueFSM.VIEW_KEY.HOME);
         refreshData().then(function () {
           if (store.getState().realtimeMode === 'polling') {
             sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
@@ -1361,7 +1367,7 @@
           .then(function () {
             SessionAudit.track('queue', 'queue.join_boss', { boss_id: vipDirect, is_vip: true, join_type: 'vip_direct' }, true);
             showToast('You\'ve joined the VIP priority queue!', 'success');
-            return refreshData().then(function () { switchView('queues'); });
+            return refreshData().then(function () { switchView(QueueFSM.VIEW_KEY.QUEUES); });
           })
           .catch(function (err) {
             if (err && err.status === 401) { handleSessionExpiry(); return; }
@@ -1400,7 +1406,7 @@
           showToast("You've joined the queue!", "success");
           SessionAudit.track('queue', 'queue.join_boss', { boss_id: joinBoss, is_vip: useVip }, true);
           return refreshData().then(function () {
-            switchView("queues");
+            switchView(QueueFSM.VIEW_KEY.QUEUES);
           });
         })
         .catch(function (err) {
@@ -1436,7 +1442,7 @@
         api.cancelRaid(raidId).then(function () {
           showToast('Raid cancelled.', 'success');
           store.setState({ managingLobby: null, lobbyQueues: [], openLobbyQrs: {}, lobbyInfoOpen: {}, suppressAutoOpenLobby: true });
-          switchView('queues');
+          switchView(QueueFSM.VIEW_KEY.QUEUES);
           return refreshData();
         }).catch(function (err) {
           if (err && err.status === 401) { handleSessionExpiry(); return; }
@@ -1695,7 +1701,7 @@
 
       var deleteLobby = target.getAttribute("data-delete-lobby");
       if (deleteLobby) {
-        switchView('queues');
+        switchView(QueueFSM.VIEW_KEY.QUEUES);
         store.setState({ hostCancelConfirm: deleteLobby });
         render(store.getState());
         return;
@@ -1716,7 +1722,7 @@
           return api.joinBossQueue(rejoinBossId, "Rejoined from web app");
         }).then(function () {
           showToast("Joined the queue!", "success");
-          return refreshData().then(function () { switchView("queues"); });
+          return refreshData().then(function () { switchView(QueueFSM.VIEW_KEY.QUEUES); });
         }).catch(function (err) {
           if (err && err.status === 401) { handleSessionExpiry(); return; }
           setMessage("Requeue failed: " + err.message, "error");
@@ -2095,7 +2101,7 @@
 
     // Logo click
     var logo = document.querySelector(".navbar-logo");
-    if (logo) logo.addEventListener("click", function () { switchView("home"); });
+    if (logo) logo.addEventListener("click", function () { switchView(QueueFSM.VIEW_KEY.HOME); });
   }
 
   /* ═══════════════════════════════════════════════════════════════
@@ -2132,7 +2138,7 @@
       store.setState({ config: cfg, authMode: "signin", pendingConfirmation: null });
       console.log('[AuthCallback] Session saved — auto sign-in complete');
       showToast("Email confirmed — you're signed in!", "success");
-      switchView("home");
+      switchView(QueueFSM.VIEW_KEY.HOME);
       refreshData().then(function () {
         if (store.getState().realtimeMode === 'polling') {
           sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
@@ -2142,7 +2148,7 @@
     } catch (err) {
       console.error('[AuthCallback] Token decode failed:', err.message);
       showToast("Confirmation link invalid or expired. Please sign in.", "error");
-      switchView("account");
+      switchView(QueueFSM.VIEW_KEY.ACCOUNT);
     }
   }
 
@@ -2185,13 +2191,13 @@
     var notifyParam = new URLSearchParams(location.search).get('notify');
     if (notifyParam === 'queues' && isAuthed()) {
       SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
-      store.setState({ view: 'queues' });
+      store.setState({ view: QueueFSM.VIEW_KEY.QUEUES });
       history.replaceState(null, '', location.pathname);
     }
 
     // Auto-redirect unauthenticated visitors to Account screen on page load
     if (!isAuthed()) {
-      store.setState({ view: "account" });
+      store.setState({ view: QueueFSM.VIEW_KEY.ACCOUNT });
     }
 
     // Sync footer: refresh button + auto-update relative time
@@ -2414,7 +2420,7 @@
         if (event.data.type === 'NOTIF_CLICK') {
           SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
           if (isAuthed()) {
-            store.setState({ view: 'queues' });
+            store.setState({ view: QueueFSM.VIEW_KEY.QUEUES });
             render(store.getState());
           }
         }

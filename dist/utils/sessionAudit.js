@@ -12,6 +12,7 @@
   var _flushTimer   = null;
   var _getApiFn     = null;      // factory: () => apiClient; always gets fresh token
   var _getState     = null;      // () => store.getState(); set via init()
+  var _getFsmState  = null;      // () => sessionMachine.getState(); set via init()
   var _tabId        = _genUuid();// random per page-load; identifies tab
   var _pagehideBound = false;    // guard: only bind pagehide once per page lifetime
   var _clickBound   = false;     // guard: only bind global click interceptor once
@@ -70,7 +71,8 @@
         }),
         raids_slim: (s.raids || []).map(function (r) {
           return { id: r.id, status: r.status, boss_id: r.raid_boss_id || null };
-        })
+        }),
+        fsmSessionState: _getFsmState ? _getFsmState() : null
       };
     } catch (e) { return null; }
   }
@@ -92,9 +94,10 @@
     return _getApiFn ? _getApiFn() : null;
   }
 
-  function init(getApiFn, getStateFn) {
+  function init(getApiFn, getStateFn, getFsmStateFn) {
     _getApiFn = getApiFn;
     _getState = getStateFn;
+    _getFsmState = getFsmStateFn || null;
     _readSession();
     if (_flushTimer) clearInterval(_flushTimer);
     _flushTimer = setInterval(flush, FLUSH_MS);
@@ -167,8 +170,8 @@
     }
   }
 
-  function resumeOrOpen(getApiFn, getStateFn, userAgent, clientInfo) {
-    init(getApiFn, getStateFn);
+  function resumeOrOpen(getApiFn, getStateFn, getFsmStateFn, userAgent, clientInfo) {
+    init(getApiFn, getStateFn, getFsmStateFn);
     if (_sessionId) return Promise.resolve(_sessionId);
     return openSession(userAgent, clientInfo);
   }

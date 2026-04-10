@@ -320,6 +320,7 @@
           userId
         );
         store.setState({ realtimeMode: 'realtime', realtimeRetrying: false });
+        sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_REALTIME);
         SessionAudit.track('realtime', 'realtime.connected', {}, false);
         // Keep slot count fresh: main poll is throttled to IDLE_MS in realtime mode,
         // so other users claiming/releasing slots would otherwise take up to 20s to reflect.
@@ -364,6 +365,7 @@
     global.AppRealtime.disconnect();
     try { await api.releaseRealtimeSlot(); } catch (e) { /* best-effort */ }
     store.setState({ realtimeMode: 'polling', realtimeRetrying: false });
+    sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
     SessionAudit.track('realtime', 'realtime.disconnected', {}, false);
   }
 
@@ -382,21 +384,20 @@
   // revoked, so retries are harmless.
   // Demotion guard: multiple channels can fire simultaneously on a WS drop. Only the first
   // caller proceeds; the rest are suppressed and logged for diagnostics.
-  var _demotionInFlight = false;
+  var sessionMachine = SessionFSM.createSessionMachine(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
   function handleRealtimeDemotion(sourceChannel, sourceStatus) {
-    if (_demotionInFlight) {
+    if (!sessionMachine.can(SessionFSM.SESSION_STATE.DEMOTION_IN_FLIGHT)) {
       SessionAudit.track('realtime_debug', 'realtime.demotion_suppressed', {
-        channel: sourceChannel || null, status: sourceStatus || null, reason: 'already_in_teardown'
+        channel: sourceChannel || null, status: sourceStatus || null, reason: 'fsm_guard_rejected'
       }, false);
       return;
     }
-    _demotionInFlight = true;
+    sessionMachine.transition(SessionFSM.SESSION_STATE.DEMOTION_IN_FLIGHT);
     SessionAudit.track('realtime_debug', 'realtime.demotion_triggered', {
       channel: sourceChannel || null, status: sourceStatus || null, retryCount: _realtimeRetryCount
     }, false);
     var api = getApi();
     teardownRealtimeMode(api).then(function () {
-      _demotionInFlight = false;
       if (_realtimeRetryCount >= 3) {
         SessionAudit.track('realtime', 'realtime.retry_exhausted', { attempts: _realtimeRetryCount }, false);
         return;
@@ -428,6 +429,7 @@
   window.App.handleRealtimeDemotion = handleRealtimeDemotion;
 
   function handleSessionExpiry() {
+    sessionMachine.transition(SessionFSM.SESSION_STATE.SESSION_EXPIRED);
     SessionAudit.track('error', 'error.api_401', { triggered_from: 'handleSessionExpiry' }, true);
     SessionAudit.track('session', 'session.closed', { reason: 'session_expiry' }, false);
     SessionAudit.closeSession('session_expiry');
@@ -459,6 +461,7 @@
       realtimeMode: 'polling',
       realtimeRetrying: false
     });
+    sessionMachine.transition(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
     showToast("Session expired. Please sign in again.", "error");
   }
 
@@ -886,7 +889,6 @@
   var _slotStatsPollTimer = null;
   var _heartbeatTimer = null;
   var _hiddenAt = null;             // timestamp when tab became hidden
-  var _recoveryInFlight = false;    // guard: prevent double-recovery (visibilitychange + pageshow)
   var _recoveryWatchdog = null;     // safety: reset _recoveryInFlight if teardown hangs (no-network)
   var _realtimeRetryTimer = null;   // backoff retry after transient CHANNEL_ERROR / TIMED_OUT
   var _realtimeRetryCount = 0;      // attempts since last successful connection (cap: 3)
@@ -1140,6 +1142,7 @@
       // Sign out
       var target = e.target.closest("#signOutBtn");
       if (target) {
+        sessionMachine.transition(SessionFSM.SESSION_STATE.SIGNING_OUT);
         SessionAudit.track('session', 'session.closed', { reason: 'sign_out' }, true);
         // Leave active queues on sign-out (fire-and-forget).
         // Capture api now — token is still valid, store still populated.
@@ -1173,6 +1176,7 @@
           view: "account",
           queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
         });
+        sessionMachine.transition(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
         setTimeout(function () { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 0);
         showToast("You've been signed out.", "info");
         return;
@@ -1315,9 +1319,12 @@
         showToast(mode === "signup" ? "Account created! Welcome aboard." : "You're signed in. Welcome back!", "success");
         switchView("home");
         refreshData().then(function () {
-          if (store.getState().realtimeMode === 'polling') initRealtimeMode(getApi());
+          if (store.getState().realtimeMode === 'polling') {
+            sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+            initRealtimeMode(getApi());
+          }
         });
-        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store)).then(function () {
+        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store), function() { return sessionMachine ? sessionMachine.getState() : null; }).then(function () {
           SessionAudit.track('session', 'session.opened', { auth_mode: store.getState().authMode }, true);
         });
         // Deferred audit config apply — wait for appConfig to arrive from first refreshData()
@@ -2127,7 +2134,10 @@
       showToast("Email confirmed — you're signed in!", "success");
       switchView("home");
       refreshData().then(function () {
-        if (store.getState().realtimeMode === 'polling') initRealtimeMode(getApi());
+        if (store.getState().realtimeMode === 'polling') {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+          initRealtimeMode(getApi());
+        }
       });
     } catch (err) {
       console.error('[AuthCallback] Token decode failed:', err.message);
@@ -2206,11 +2216,16 @@
       // Anonymous browsers have no realtime slot to recover, but still refresh data on
       // bfcache restore — the snapshot could be arbitrarily old from the previous visit.
       if (!isAuthed()) return;
-      if (_recoveryInFlight) return; // visibilitychange already started recovery
-      _recoveryInFlight = true;
+      if (!sessionMachine.can(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) return; // visibilitychange already started recovery
+      sessionMachine.transition(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT);
       SessionAudit.track('lifecycle', 'lifecycle.recovery_start', { trigger: 'bfcache' }, true);
       if (_recoveryWatchdog) clearTimeout(_recoveryWatchdog);
-      _recoveryWatchdog = setTimeout(function () { _recoveryInFlight = false; _recoveryWatchdog = null; }, 10000);
+      _recoveryWatchdog = setTimeout(function () {
+        if (sessionMachine.is(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+        }
+        _recoveryWatchdog = null;
+      }, 10000);
       var api = getApi();
       var currentMode = store.getState().realtimeMode;
       if (currentMode === 'realtime') {
@@ -2224,7 +2239,6 @@
         }).catch(function () {}).then(function () {
           clearTimeout(_recoveryWatchdog);
           _recoveryWatchdog = null;
-          _recoveryInFlight = false;
         });
       } else {
         // Was in polling mode — try to upgrade now that we have fresh context
@@ -2235,7 +2249,6 @@
         }).catch(function () {}).then(function () {
           clearTimeout(_recoveryWatchdog);
           _recoveryWatchdog = null;
-          _recoveryInFlight = false;
         });
       }
     });
@@ -2258,11 +2271,16 @@
       _hiddenAt = null;
       SessionAudit.track('lifecycle', 'lifecycle.visibility_visible', { elapsed_ms: elapsed }, false);
       if (elapsed < STALE_THRESHOLD_MS) return; // short switch — WS is likely still alive
-      if (_recoveryInFlight) return;            // pageshow already handling this restore
-      _recoveryInFlight = true;
+      if (!sessionMachine.can(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) return; // pageshow already handling this restore
+      sessionMachine.transition(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT);
       SessionAudit.track('lifecycle', 'lifecycle.recovery_start', { trigger: 'visibility_change', elapsed_ms: elapsed }, true);
       if (_recoveryWatchdog) clearTimeout(_recoveryWatchdog);
-      _recoveryWatchdog = setTimeout(function () { _recoveryInFlight = false; _recoveryWatchdog = null; }, 10000);
+      _recoveryWatchdog = setTimeout(function () {
+        if (sessionMachine.is(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+        }
+        _recoveryWatchdog = null;
+      }, 10000);
       var api = getApi();
       var mode = store.getState().realtimeMode;
       var recover = (mode === 'realtime')
@@ -2277,7 +2295,6 @@
       }).catch(function () {}).then(function () {
         clearTimeout(_recoveryWatchdog);
         _recoveryWatchdog = null;
-        _recoveryInFlight = false;
       });
     });
 
@@ -2407,10 +2424,11 @@
     // Start the adaptive poll cycle after initial data load
     refreshData().then(function () {
       if (isAuthed()) {
+        sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
         initRealtimeMode(getApi());
       }
       if (isAuthed()) {
-        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store));
+        SessionAudit.resumeOrOpen(getApi, store.getState.bind(store), function() { return sessionMachine ? sessionMachine.getState() : null; });
       }
       scheduleNextPoll();
     });
