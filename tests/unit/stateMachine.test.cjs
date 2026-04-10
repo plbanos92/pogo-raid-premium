@@ -658,3 +658,37 @@ test("_recoveryWatchdog setTimeout is wired in app.js", () => {
     "_recoveryWatchdog must be armed via setTimeout so the flag resets if teardown hangs on a dead network"
   );
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 15. PHASE 3 — POLL INTERVAL / HEAT DELEGATION TO QueueFSM
+// ═══════════════════════════════════════════════════════════════
+
+const queueFsmSource = fs.readFileSync(path.resolve(__dirname, '../../src/state-machines/queueStateMachine.js'), 'utf8');
+
+test("getSyncPollInterval in app.js delegates to QueueFSM.getSyncHeat", () => {
+  assert.equal(
+    /QueueFSM\.getSyncHeat/.test(appSource), true,
+    "getSyncPollInterval must delegate to QueueFSM.getSyncHeat(state)"
+  );
+});
+
+test("getMaintenanceInterval in app.js delegates to QueueFSM.getMaintenanceHeat", () => {
+  assert.equal(
+    /QueueFSM\.getMaintenanceHeat/.test(appSource), true,
+    "getMaintenanceInterval must delegate to QueueFSM.getMaintenanceHeat(state)"
+  );
+});
+
+test("QueueFSM.getSyncHeat is declared as a function in queueStateMachine.js", () => {
+  assert.equal(
+    hasFunctionDeclaration(queueFsmSource, 'getSyncHeat'), true,
+    "queueStateMachine.js must declare function getSyncHeat"
+  );
+});
+
+test("QueueFSM.getMaintenanceHeat is declared as a function in queueStateMachine.js", () => {
+  assert.equal(
+    hasFunctionDeclaration(queueFsmSource, 'getMaintenanceHeat'), true,
+    "queueStateMachine.js must declare function getMaintenanceHeat"
+  );
+});
