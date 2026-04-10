@@ -444,8 +444,10 @@
     SessionAudit.closeSession('session_expiry');
     _realtimeRetryCount = 0;
     teardownRealtimeMode(getApi());
+    var _expiryUserId = store.getState().config.userId; // capture before clearSession wipes it
     global.AppConfig.clearSession();
     formPersist.clearAll();
+    if (typeof LocalCache !== 'undefined' && _expiryUserId) LocalCache.clearUser(_expiryUserId);
     profileEditMode = false;
     closeDrawer();
     store.setState({
@@ -986,6 +988,24 @@
         renderFooter(store.getState());
         SessionAudit.track('data', 'data.refresh_ok', null, false);
 
+        // Persist non-sensitive user + global data to local cache for instant hydration on next load.
+        if (typeof LocalCache !== 'undefined') {
+          var _cacheUserId = store.getState().config.userId;
+          if (_cacheUserId) {
+            LocalCache.saveUser(_cacheUserId, {
+              isVip:        payload.isVip        || false,
+              isAdmin:      payload.isAdmin       || false,
+              profile:      payload.profile       || null,
+              accountStats: payload.accountStats  || null
+            });
+          }
+          LocalCache.saveGlobal({
+            appConfig:  payload.appConfig  || null,
+            raidBosses: Array.isArray(payload.raidBosses) ? payload.raidBosses : [],
+            bosses:     Array.isArray(payload.bosses)     ? payload.bosses     : []
+          });
+        }
+
         // Auto-open lobby management panel when host has an active lobby
         var currentState = store.getState();
         var currentManaging = currentState.managingLobby;
@@ -1176,8 +1196,10 @@
         // Capture api now while the token is still in the store.
         _realtimeRetryCount = 0;
         teardownRealtimeMode(getApi());
+        var _signOutUserId = store.getState().config.userId; // capture before clearSession wipes it
         global.AppConfig.clearSession();
         formPersist.clearAll();
+        if (typeof LocalCache !== 'undefined' && _signOutUserId) LocalCache.clearUser(_signOutUserId);
         profileEditMode = false;
         closeDrawer();
         store.setState({
@@ -2428,6 +2450,30 @@
           }
         }
       });
+    }
+
+    // Hydrate store from local cache for instant render — refreshData() always
+    // runs immediately after and overwrites with fresh data.
+    if (typeof LocalCache !== 'undefined') {
+      if (isAuthed()) {
+        var _cachedUser = LocalCache.loadUser(store.getState().config.userId, 86400000); // 24h TTL
+        if (_cachedUser) {
+          store.setState({
+            isVip:         _cachedUser.isVip        || false,
+            isAdmin:       _cachedUser.isAdmin       || false,
+            profile:       _cachedUser.profile       || null,
+            accountStats:  _cachedUser.accountStats  || null
+          });
+        }
+      }
+      var _cachedGlobal = LocalCache.loadGlobal(86400000);
+      if (_cachedGlobal) {
+        store.setState({
+          appConfig:  _cachedGlobal.appConfig  || null,
+          raidBosses: Array.isArray(_cachedGlobal.raidBosses) ? _cachedGlobal.raidBosses : [],
+          bosses:     Array.isArray(_cachedGlobal.bosses)     ? _cachedGlobal.bosses     : []
+        });
+      }
     }
 
     // Start the adaptive poll cycle after initial data load
