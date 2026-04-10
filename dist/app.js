@@ -493,24 +493,12 @@
   }
 
   function getSyncPollInterval(state) {
-    if (state.realtimeMode === 'realtime' && !state.managingLobby) return AppConstants.POLL.IDLE_MS;
-    var queues = state.queues || [];
-    var hasHotQueue = queues.some(function (q) {
-      return q.status === AppConstants.STATUS.INVITED || q.status === AppConstants.STATUS.RAIDING;
-    });
-    if (state.managingLobby || hasHotQueue) return AppConstants.POLL.HOT_MS;
-    if (queues.length > 0 || (state.hosts || []).length > 0) return AppConstants.POLL.WARM_MS;
-    return AppConstants.POLL.IDLE_MS;
+    // realtimeMode === 'realtime' && !managingLobby → POLL.IDLE_MS (see QueueFSM.getSyncHeat)
+    return QueueFSM.getPollInterval(QueueFSM.getSyncHeat(state));
   }
 
   function getMaintenanceInterval(state) {
-    var queues = state.queues || [];
-    var hasHotQueue = queues.some(function (q) {
-      return q.status === AppConstants.STATUS.INVITED || q.status === AppConstants.STATUS.RAIDING;
-    });
-    if (state.managingLobby || hasHotQueue) return AppConstants.MAINTENANCE.HOT_MS;
-    if (queues.length > 0 || (state.hosts || []).length > 0) return AppConstants.MAINTENANCE.WARM_MS;
-    return AppConstants.MAINTENANCE.IDLE_MS;
+    return QueueFSM.getMaintenanceInterval(QueueFSM.getMaintenanceHeat(state));
   }
 
   function runQueueMaintenance(api, state) {
@@ -1006,17 +994,17 @@
           if (!prevQ) return;
 
           // Auto-reinvite toast
-          if (q.status === 'invited' && (q.invite_attempts || 0) > 0 && q.invited_at !== prevQ.invited_at) {
+          if (q.status === 'invited' && (q.invite_attempts || 0) > 0 && q.invited_at !== prevQ.invited_at) { // TODO: Phase 5 - use QueueFSM
             showToast("You've been automatically re-invited — you still have a spot! (Attempt " + (q.invite_attempts || 0) + " / 3)", 'info');
           }
 
           // Cap-hit toast
-          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) >= 3) {
+          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) >= 3) { // TODO: Phase 5 - use QueueFSM
             showToast("Invite window expired — you're back in queue at your original position.", 'warning');
           }
 
           // Lobby full toast
-          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) < 3) {
+          if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) < 3) { // TODO: Phase 5 - use QueueFSM
             showToast("The lobby is full — you've been returned to the queue.", 'info');
           }
         });
