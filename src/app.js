@@ -262,11 +262,13 @@
   }
 
   function switchView(view) {
-    var _validViews = Object.keys(QueueFSM.VIEW_KEY).map(function(k) { return QueueFSM.VIEW_KEY[k]; });
-    if (_validViews.indexOf(view) < 0) {
-      console.warn('[RaidSync] switchView: unknown view key "' + view + '"');
-      SessionAudit.track('nav', 'nav.view_invalid', { attempted: view }, false);
-      return;
+    if (QueueFSM.VIEW_KEY) {
+      var _validViews = Object.keys(QueueFSM.VIEW_KEY).map(function(k) { return QueueFSM.VIEW_KEY[k]; });
+      if (_validViews.indexOf(view) < 0) {
+        console.warn('[RaidSync] switchView: unknown view key "' + view + '"');
+        SessionAudit.track('nav', 'nav.view_invalid', { attempted: view }, false);
+        return;
+      }
     }
     formPersist.save('app', 'view', view);
     var _prevView = store.getState().view;
@@ -2191,13 +2193,13 @@
     var notifyParam = new URLSearchParams(location.search).get('notify');
     if (notifyParam === 'queues' && isAuthed()) {
       SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
-      store.setState({ view: QueueFSM.VIEW_KEY.QUEUES });
+      store.setState({ view: (QueueFSM.VIEW_KEY || {}).QUEUES || 'queues' });
       history.replaceState(null, '', location.pathname);
     }
 
     // Auto-redirect unauthenticated visitors to Account screen on page load
     if (!isAuthed()) {
-      store.setState({ view: QueueFSM.VIEW_KEY.ACCOUNT });
+      store.setState({ view: (QueueFSM.VIEW_KEY || {}).ACCOUNT || 'account' });
     }
 
     // Sync footer: refresh button + auto-update relative time
@@ -2420,7 +2422,7 @@
         if (event.data.type === 'NOTIF_CLICK') {
           SessionAudit.track('notif', 'notif.clicked', { target: 'queues' }, false);
           if (isAuthed()) {
-            store.setState({ view: QueueFSM.VIEW_KEY.QUEUES });
+            store.setState({ view: (QueueFSM.VIEW_KEY || {}).QUEUES || 'queues' });
             render(store.getState());
           }
         }

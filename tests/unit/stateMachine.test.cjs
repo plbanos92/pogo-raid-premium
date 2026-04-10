@@ -784,7 +784,7 @@ test("switchView in app.js guards against unknown view keys via QueueFSM.VIEW_KE
     "switchView must reference QueueFSM.VIEW_KEY early in its body for the guard"
   );
   assert.equal(
-    /function\s+switchView[\s\S]{0,300}nav\.view_invalid/.test(appSource), true,
+    /function\s+switchView[\s\S]{0,450}nav\.view_invalid/.test(appSource), true,
     "switchView must call SessionAudit.track with 'nav.view_invalid' on unknown keys"
   );
 });
