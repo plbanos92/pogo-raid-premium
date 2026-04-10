@@ -569,8 +569,8 @@ test("pageshow handler is a no-op for normal (non-persisted) page loads", () => 
 
 test("pageshow handler calls refreshData to get fresh state on bfcache restore", () => {
   assert.equal(
-    /window\.addEventListener[\s\S]{0,600}pageshow[\s\S]{0,600}refreshData\(\)/.test(appSource) ||
-    /pageshow[\s\S]{0,600}refreshData\(\)/.test(appSource),
+    /window\.addEventListener[\s\S]{0,800}pageshow[\s\S]{0,800}refreshData\(\)/.test(appSource) ||
+    /pageshow[\s\S]{0,800}refreshData\(\)/.test(appSource),
     true,
     "pageshow handler must call refreshData() to fetch up-to-date VIP/slot state"
   );
@@ -579,7 +579,7 @@ test("pageshow handler calls refreshData to get fresh state on bfcache restore",
 test("pageshow handler attempts to re-init realtime after bfcache restore", () => {
   // Accept both: initRealtimeMode(getApi()) directly, or via a captured local 'api' variable
   assert.equal(
-    /pageshow[\s\S]{0,800}initRealtimeMode\((?:getApi\(\)|api)\)/.test(appSource),
+    /pageshow[\s\S]{0,1200}initRealtimeMode\((?:getApi\(\)|api)\)/.test(appSource),
     true,
     "pageshow handler must call initRealtimeMode to upgrade eligible users from polling"
   );
@@ -589,7 +589,7 @@ test("pageshow handler tears down stale realtime WS before re-initialising", () 
   // When page was in realtime mode at freeze time, the WS is dead after bfcache restore.
   // Must teardown before re-init to avoid duplicate timers and orphaned slots.
   assert.equal(
-    /pageshow[\s\S]{0,600}teardownRealtimeMode/.test(appSource),
+    /pageshow[\s\S]{0,800}teardownRealtimeMode/.test(appSource),
     true,
     "pageshow handler must call teardownRealtimeMode for the realtime→realtime recovery path"
   );
@@ -611,11 +611,11 @@ test("_hiddenAt variable is declared at module level in app.js", () => {
   );
 });
 
-test("_recoveryInFlight variable is declared at module level in app.js", () => {
+test("sessionMachine (SessionFSM) is declared at module level in app.js", () => {
   assert.equal(
-    /var\s+_recoveryInFlight\s*=\s*false/.test(appSource),
+    /var\s+sessionMachine\s*=\s*SessionFSM\.createSessionMachine/.test(appSource),
     true,
-    "_recoveryInFlight must be declared at module level to prevent double-recovery races"
+    "sessionMachine must be declared at module level using SessionFSM.createSessionMachine (replaces _recoveryInFlight + _demotionInFlight)"
   );
 });
 
@@ -643,11 +643,19 @@ test("visibilitychange listener is registered in app.js", () => {
   );
 });
 
-test("pageshow handler checks _recoveryInFlight before starting recovery", () => {
+test("pageshow handler uses SessionFSM guard before starting recovery", () => {
   assert.equal(
-    /pageshow[\s\S]{0,200}_recoveryInFlight/.test(appSource),
+    /pageshow[\s\S]{0,600}sessionMachine\.can/.test(appSource),
     true,
-    "pageshow handler must check _recoveryInFlight to avoid racing with visibilitychange recovery"
+    "pageshow handler must use sessionMachine.can() to guard against racing with visibilitychange recovery"
+  );
+});
+
+test("app.js contains sessionMachine.transition calls (Phase 6 wiring)", () => {
+  assert.equal(
+    /sessionMachine\.transition/.test(appSource),
+    true,
+    "app.js must wire sessionMachine.transition() calls confirming Phase 6 FSM integration"
   );
 });
 

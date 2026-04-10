@@ -2,6 +2,13 @@
   var AppViews = global.AppViews = global.AppViews || {};
   var AppHtml = global.AppHtml || {};
 
+  function getStatusLabel(status, deps) {
+    var meta = deps.QueueFSM.getQueueStatusMeta(status);
+    if (meta.iconName) return deps.icon(meta.iconName, 12) + ' ' + meta.label;
+    if (status === 'raiding') return '<span class="pulse-dot-sm"></span> ' + meta.label;
+    return meta.label;
+  }
+
   function defaultConflictMap(conflicts) {
     var rows = Array.isArray(conflicts) ? conflicts : [];
     var map = {};
@@ -62,14 +69,8 @@
     html.push('  <div class="queue-teammate-list">');
 
     if (meEntry) {
-      var meStatusClass = meEntry.status === 'confirmed' ? 'status-confirmed' :
-        meEntry.status === 'invited' ? 'status-invited' :
-        meEntry.status === 'raiding' ? 'status-raiding' :
-        meEntry.status === 'done' ? 'status-done' : 'status-queued';
-      var meStatusLabel = meEntry.status === 'confirmed' ? icon('check', 12) + ' Friend Request Sent' :
-        meEntry.status === 'invited' ? 'Invited' :
-        meEntry.status === 'raiding' ? '<span class="pulse-dot-sm"></span> Raiding' :
-        meEntry.status === 'done' ? icon('check', 12) + ' Done' : 'Queued';
+      var meStatusClass = deps.QueueFSM.getQueueStatusMeta(meEntry.status).cssClass;
+      var meStatusLabel = getStatusLabel(meEntry.status, deps);
       html.push('    <div class="queue-teammate-entry is-me">');
       html.push('      <div class="lobby-avatar is-me">You</div>');
       html.push('      <div class="queue-teammate-info">');
@@ -84,14 +85,8 @@
 
     teammates.forEach(function (entry) {
       var name = getTrainerDisplayName(entry);
-      var statusClass = entry.status === 'confirmed' ? 'status-confirmed' :
-        entry.status === 'invited' ? 'status-invited' :
-        entry.status === 'raiding' ? 'status-raiding' :
-        entry.status === 'done' ? 'status-done' : 'status-queued';
-      var statusLabel = entry.status === 'confirmed' ? icon('check', 12) + ' Friend Request Sent' :
-        entry.status === 'invited' ? 'Invited' :
-        entry.status === 'raiding' ? '<span class="pulse-dot-sm"></span> Raiding' :
-        entry.status === 'done' ? icon('check', 12) + ' Done' : 'Queued';
+      var statusClass = deps.QueueFSM.getQueueStatusMeta(entry.status).cssClass;
+      var statusLabel = getStatusLabel(entry.status, deps);
 
       html.push('    <div class="queue-teammate-entry">');
       html.push('      <div class="lobby-avatar">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>');
@@ -318,9 +313,8 @@
           participants.forEach(function (entry) {
             var name = getTrainerDisplayName(entry);
             var initial = name.charAt(0).toUpperCase();
-            var participantStatusPill = entry.status === 'raiding'
-              ? '<span class="status-pill status-raiding"><span class="pulse-dot-sm"></span> Raiding</span>'
-              : '<span class="status-pill status-done">' + icon('check', 12) + ' Done</span>';
+            var _pMeta = deps.QueueFSM.getQueueStatusMeta(entry.status);
+            var participantStatusPill = '<span class="status-pill ' + _pMeta.cssClass + '">' + getStatusLabel(entry.status, deps) + '</span>';
             var qrOpen = !!((state.openLobbyQrs || {})[entry.id]);
 
             rp.push('    <div class="lobby-queue-entry">');
@@ -397,7 +391,7 @@
         }
 
         var lqWithFc = lq.filter(function (entry) {
-          return !!entry.friend_code && entry.status !== 'done' && entry.status !== 'cancelled' && entry.status !== 'left';
+          return !!entry.friend_code && entry.status !== 'done' && !deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal;
         });
         if (lqWithFc.length > 0) {
           var anyQrOpen = lqWithFc.some(function (entry) { return !!(state.openLobbyQrs || {})[entry.id]; });
@@ -413,7 +407,7 @@
 
         lp.push('  <div class="lobby-queue-list">');
         lq.forEach(function (entry) {
-          if (entry.status === 'done' || entry.status === 'cancelled' || entry.status === 'left') return;
+          if (entry.status === 'done' || deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal) return;
           var name = getTrainerDisplayName(entry);
           var initial = name.charAt(0).toUpperCase();
           var qrOpen = !!((state.openLobbyQrs || {})[entry.id]);
@@ -702,7 +696,8 @@
           icon: icon,
           escapeHtml: escapeHtml,
           getTrainerDisplayName: getTrainerDisplayName,
-          renderTrainerMeta: renderTrainerMeta
+          renderTrainerMeta: renderTrainerMeta,
+          QueueFSM: deps.QueueFSM
         }));
 
         if ((q.status === 'queued' && hostFriendCode) || q.status === 'invited' || q.status === 'confirmed') {
