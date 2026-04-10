@@ -693,6 +693,7 @@
       getTrainerDisplayName: AppHtml.getTrainerDisplayName,
       formatFriendCode: AppHtml.formatFriendCode,
       shouldShowLeaveQueueButton: queueActionUtils.shouldShowLeaveQueueButton,
+      QueueFSM: global.QueueFSM,
       isTerminalRaidStatus: function (status) {
         return !!(global.RaidPredicates && typeof global.RaidPredicates.isTerminal === 'function' && global.RaidPredicates.isTerminal(status));
       }

@@ -692,3 +692,56 @@ test("QueueFSM.getMaintenanceHeat is declared as a function in queueStateMachine
     "queueStateMachine.js must declare function getMaintenanceHeat"
   );
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 16. PHASE 5 — queuesView uses QueueFSM for status meta
+//
+// Guards that raw status-pill CSS class ternary chains have been
+// removed from queuesView.js and replaced with QueueFSM calls.
+// If any of these ternary literals reappear, the migration was
+// partially reverted.
+// ═══════════════════════════════════════════════════════════════
+
+const queuesViewSource = fs.readFileSync(path.resolve(__dirname, '../../src/views/queuesView.js'), 'utf8');
+
+test("queuesView.js has no raw status-pill CSS class ternary for 'confirmed'", () => {
+  assert.equal(
+    /\? 'status-confirmed'/.test(queuesViewSource), false,
+    "queuesView.js must not contain ? 'status-confirmed' ternary — use deps.QueueFSM.getQueueStatusMeta().cssClass instead"
+  );
+});
+
+test("queuesView.js has no raw status-pill CSS class ternary for 'invited'", () => {
+  assert.equal(
+    /\? 'status-invited'/.test(queuesViewSource), false,
+    "queuesView.js must not contain ? 'status-invited' ternary — use deps.QueueFSM.getQueueStatusMeta().cssClass instead"
+  );
+});
+
+test("queuesView.js has no raw status-pill CSS class ternary for 'raiding'", () => {
+  assert.equal(
+    /\? 'status-raiding'/.test(queuesViewSource), false,
+    "queuesView.js must not contain ? 'status-raiding' ternary — use deps.QueueFSM.getQueueStatusMeta().cssClass instead"
+  );
+});
+
+test("queuesView.js has no raw status-pill CSS class ternary for 'done'", () => {
+  assert.equal(
+    /\? 'status-done'/.test(queuesViewSource), false,
+    "queuesView.js must not contain ? 'status-done' ternary — use deps.QueueFSM.getQueueStatusMeta().cssClass instead"
+  );
+});
+
+test("queuesView.js delegates status CSS class to QueueFSM.getQueueStatusMeta", () => {
+  assert.equal(
+    /deps\.QueueFSM\.getQueueStatusMeta/.test(queuesViewSource), true,
+    "queuesView.js must call deps.QueueFSM.getQueueStatusMeta() for status pill CSS classes"
+  );
+});
+
+test("app.js passes QueueFSM into renderQueues deps", () => {
+  assert.equal(
+    /QueueFSM\s*:\s*global\.QueueFSM/.test(appSource), true,
+    "renderQueuesView() in app.js must pass QueueFSM: global.QueueFSM into the deps object"
+  );
+});
