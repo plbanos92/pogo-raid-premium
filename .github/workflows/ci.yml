@@ -28,6 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run unit tests
         run: npm run test:unit
@@ -45,13 +49,17 @@ jobs:
       - name: Checkout backend repo
         uses: actions/checkout@v4
         with:
-          repository: <org>/pogo-raid-premium-backend
+          repository: plbanos92/pogo-raid-premium-backend
           path: backend
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1

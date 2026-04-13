@@ -353,6 +353,45 @@
           return;
         }
 
+        // ── Egg lobby — waiting to hatch ─────────────────────────────────
+        if (h.status === 'egg') {
+          var ep = [];
+          var hatchTimeMs = h.hatch_time ? new Date(h.hatch_time).getTime() : 0;
+          var preInviteMs = hatchTimeMs ? (hatchTimeMs - 2 * 60 * 1000) : 0;
+          var nowMs = Date.now();
+          var minsUntilFill = hatchTimeMs ? Math.ceil((preInviteMs - nowMs) / 60000) : null;
+
+          var countdownChip;
+          if (!hatchTimeMs) {
+            countdownChip = '<span class="form-group-hint" style="display:inline">No hatch time set — open manually.</span>';
+          } else if (minsUntilFill > 0) {
+            countdownChip = '<span style="color:var(--amber-600);font-size:0.8125rem;font-weight:600">' + icon('clock', 13) + ' Lobby fills in ' + minsUntilFill + ' min</span>';
+          } else {
+            countdownChip = '<span style="color:var(--teal-600);font-size:0.8125rem;font-weight:600"><span class="pulse-dot-sm"></span> Filling now\u2026</span>';
+          }
+
+          ep.push('<div class="lobby-panel">');
+          ep.push('  <div class="lobby-panel-header">');
+          ep.push('    <div class="lobby-panel-title-group">');
+          ep.push('      <h3 class="lobby-panel-title">' + escapeHtml(bossName) + ' <span style="background:var(--amber-100);color:var(--amber-700);border:1px solid var(--amber-200);border-radius:9999px;font-size:0.6875rem;font-weight:700;padding:0.125rem 0.5rem;vertical-align:middle">' + icon('clock', 11) + ' Egg</span></h3>');
+          ep.push('    </div>');
+          ep.push('  </div>');
+          ep.push('  <div class="lobby-host-strip">');
+          ep.push('    <img class="lobby-host-img-sm" src="' + escapeHtml(getBossDisplayImage(rb || { name: bossName })) + '" alt="' + escapeHtml(bossName) + '">');
+          ep.push('    <div class="lobby-host-info">');
+          ep.push('      <span class="lobby-host-name">' + icon('user', 13) + ' ' + escapeHtml(hostName) + '</span>');
+          ep.push(renderTrainerMeta(hostTeam, hostLevel, 'trainer-meta-row'));
+          ep.push('    </div>');
+          ep.push('  </div>');
+          ep.push('  <div style="padding:0.5rem 0 0.25rem">' + countdownChip + '</div>');
+          ep.push('  <button class="btn-start-raid" data-hatch-raid="' + escapeHtml(h.id) + '" type="button">' + icon('zap', 16) + ' Open Lobby Now</button>');
+          ep.push('  <button class="btn-delete-lobby" data-delete-lobby="' + escapeHtml(h.id) + '" type="button">' + icon('trash', 14) + ' Cancel Raid</button>');
+          ep.push('</div>');
+          html.push(ep.join('\n'));
+          return;
+        }
+        // ── end egg lobby ─────────────────────────────────────────────────
+
         var confirmedCount = lq.filter(function (e) { return e.status === 'confirmed'; }).length;
         var cap = parseInt(h.capacity, 10) || 5;
         var slotDots = '';
@@ -610,6 +649,24 @@
           c.push('  </div>');
         }
         c.push('</div>');
+
+        // Egg lobby note — raid not open yet
+        var raidStatus = raid && raid.status;
+        if (raidStatus === 'egg') {
+          var raidHatchTime = raid && raid.hatch_time ? new Date(raid.hatch_time).getTime() : 0;
+          var raidPreInviteMs = raidHatchTime ? (raidHatchTime - 2 * 60 * 1000) : 0;
+          var raidNowMs = Date.now();
+          var raidMinsUntilFill = raidHatchTime ? Math.ceil((raidPreInviteMs - raidNowMs) / 60000) : null;
+          var eggNote;
+          if (!raidHatchTime) {
+            eggNote = 'Egg lobby — host will open manually.';
+          } else if (raidMinsUntilFill > 0) {
+            eggNote = 'Egg lobby — fills in ' + raidMinsUntilFill + ' min';
+          } else {
+            eggNote = 'Egg lobby — filling now\u2026';
+          }
+          c.push('<div style="display:flex;align-items:center;gap:0.375rem;padding:0.375rem 0;font-size:0.8125rem;color:var(--amber-700);font-weight:600">' + icon('clock', 13) + ' ' + AppHtml.escapeHtml(eggNote) + '</div>');
+        }
 
         if (lobbyBubbleOpen) {
           c.push('<div class="queue-info-bubble">');

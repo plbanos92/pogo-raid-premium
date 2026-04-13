@@ -101,7 +101,7 @@
           headers: {
             Prefer: "return=representation"
           },
-          body: {
+          body: Object.assign({
             host_user_id: payload.hostUserId,
             raid_boss_id: payload.raidBossId,
             location_name: payload.locationName,
@@ -110,14 +110,15 @@
             capacity: payload.capacity,
             is_active: true,
             friend_code: payload.friendCode
-          }
+          }, payload.status    ? { status:     payload.status    } : {},
+             payload.hatchTime ? { hatch_time: payload.hatchTime } : {})
         }).catch(function () {
           return request("/rest/v1/raids", {
             method: "POST",
             headers: {
               Prefer: "return=representation"
             },
-            body: {
+            body: Object.assign({
               host_user_id: payload.hostUserId,
               raid_boss_id: payload.raidBossId,
               location_name: payload.locationName,
@@ -125,7 +126,8 @@
               end_time: payload.endTime,
               capacity: payload.capacity,
               is_active: true
-            }
+            }, payload.status    ? { status:     payload.status    } : {},
+               payload.hatchTime ? { hatch_time: payload.hatchTime } : {})
           });
         });
       },
@@ -206,6 +208,18 @@
         return request("/rest/v1/rpc/touch_host_activity", {
           method: "POST",
           body: { p_raid_id: raidId }
+        });
+      },
+      hatchRaid: function (raidId) {
+        return request("/rest/v1/rpc/hatch_raid", {
+          method: "POST",
+          body: { p_raid_id: raidId }
+        });
+      },
+      autoHatchExpiredEggs: function () {
+        return request("/rest/v1/rpc/auto_hatch_expired_eggs", {
+          method: "POST",
+          body: {}
         });
       },
       listRaidQueue: function (raidId) {

@@ -29,7 +29,8 @@
     LOBBY:     'lobby',
     RAIDING:   'raiding',
     COMPLETED: 'completed',
-    CANCELLED: 'cancelled'
+    CANCELLED: 'cancelled',
+    EGG:       'egg'
   });
 
   var POLL_HEAT = Object.freeze({
@@ -81,7 +82,8 @@
     lobby:     ['open', 'raiding', 'cancelled'],
     raiding:   ['completed', 'cancelled'],
     completed: [],
-    cancelled: []
+    cancelled: [],
+    egg:       ['open', 'cancelled']
   });
 
   function isValidQueueTransition(from, to) {
@@ -121,7 +123,8 @@
     lobby:     { isJoinable: true,  isActive: true,  isTerminal: false },
     raiding:   { isJoinable: false, isActive: true,  isTerminal: false },
     completed: { isJoinable: false, isActive: false, isTerminal: true  },
-    cancelled: { isJoinable: false, isActive: false, isTerminal: true  }
+    cancelled: { isJoinable: false, isActive: false, isTerminal: true  },
+    egg:       { isJoinable: false, isActive: true,  isTerminal: false }
   };
 
   var _unknownRaidMeta = { isJoinable: false, isActive: false, isTerminal: false };

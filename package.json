@@ -11,5 +11,8 @@
     "test": "npm run test:unit",
     "test:unit": "node --test tests/unit/**/*.test.cjs",
     "test:integration": "node --test tests/integration/**/*.test.cjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.82.0"
   }
 }
