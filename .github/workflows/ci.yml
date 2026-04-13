@@ -51,6 +51,7 @@ jobs:
         with:
           repository: plbanos92/pogo-raid-premium-backend
           path: backend
+          token: ${{ secrets.BACKEND_REPO_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -76,8 +77,8 @@ jobs:
         working-directory: backend
         run: |
           echo "LOCAL_SUPABASE_URL=http://127.0.0.1:54321" >> $GITHUB_ENV
-          ANON=$(supabase status --output json | jq -r '.anon_key')
-          SVC=$(supabase status --output json | jq -r '.service_role_key')
+          ANON=$(supabase status | grep 'anon key' | awk '{print $NF}')
+          SVC=$(supabase status | grep 'service_role key' | awk '{print $NF}')
           echo "LOCAL_SUPABASE_ANON_KEY=${ANON}" >> $GITHUB_ENV
           echo "LOCAL_SUPABASE_SERVICE_ROLE_KEY=${SVC}" >> $GITHUB_ENV
 
