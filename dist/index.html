@@ -175,14 +175,24 @@
             </p>
           </div>
           <div class="form-group" id="hostEggGroup">
-            <div class="form-group form-checkbox-row" style="padding: 0.25rem 0">
-              <input id="hostEggToggle" type="checkbox" style="width:1rem;height:1rem;accent-color:var(--indigo-500);cursor:pointer">
-              <label for="hostEggToggle" class="form-group-label" style="margin:0;cursor:pointer">Egg lobby — fill when hatched</label>
-            </div>
-            <div class="form-group hidden" id="hostHatchTimeGroup">
-              <label class="form-group-label" for="hostHatchTime">Expected Hatch Time <span style="color:var(--slate-400);font-weight:400">(optional)</span></label>
-              <input id="hostHatchTime" class="form-input" type="datetime-local" step="60">
-              <p class="form-group-hint">Players are invited 2 min before this time — giving everyone time to add the host as a friend before the raid hatches.</p>
+            <div class="egg-card" id="eggCard">
+              <label for="hostEggToggle" class="egg-toggle-label">
+                <input id="hostEggToggle" type="checkbox" class="egg-toggle-checkbox">
+                <span class="egg-toggle-icon"></span>
+                <span class="egg-toggle-text">Egg lobby <span class="egg-toggle-desc">(players join when raid hatches)</span></span>
+              </label>
+              <div class="egg-card-content" id="eggCardContent">
+                <div class="egg-card-header">
+                  <span class="egg-card-icon"></span>
+                  <span class="egg-card-title">Egg lobby enabled</span>
+                </div>
+                <div class="egg-card-explainer">Players will be matched and invited when the raid hatches. Set the expected hatch time for better coordination.</div>
+                <div class="egg-hatch-time-row">
+                  <label class="form-group-label" for="hostHatchTime">Expected Hatch Time <span class="egg-hatch-optional">(optional)</span></label>
+                  <input id="hostHatchTime" class="form-input" type="datetime-local" step="60">
+                </div>
+                <p class="form-group-hint">Players are invited 2 min before this time — giving everyone time to add the host as a friend before the raid hatches.</p>
+              </div>
             </div>
           </div>
           <div style="padding-top:1rem">

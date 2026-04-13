@@ -578,78 +578,64 @@ a { text-decoration: none; color: inherit; }
 .team-select-preview {
   height: 6px; border-radius: 9999px; margin-top: 0.375rem;
   transition: opacity 0.3s ease; opacity: 0;
-  background-size: 180% 100%;
-}
-.team-select-preview.team-mystic { opacity: 1; background: linear-gradient(90deg, var(--indigo-200), var(--teal-300), var(--indigo-300)); }
-.team-select-preview.team-valor { opacity: 1; background: linear-gradient(90deg, var(--amber-300), var(--orange-400), var(--red-500)); }
-.team-select-preview.team-instinct { opacity: 1; background: linear-gradient(90deg, var(--amber-200), var(--amber-400), var(--amber-500)); }
-@media (prefers-reduced-motion: no-preference) {
-  .team-badge.team-mystic { animation: auraMystic 2.6s ease-in-out infinite; }
-  .team-badge.team-valor { animation: auraValor 2.3s ease-in-out infinite; }
-  .team-badge.team-instinct { animation: auraInstinct 2.1s ease-in-out infinite; }
-  .team-select-preview.team-mystic { animation: auraMysticBar 2.8s linear infinite alternate; }
-  .team-select-preview.team-valor { animation: auraValorBar 2.2s ease-in-out infinite; }
-  .team-select-preview.team-instinct { animation: auraInstinctBar 2s ease-in-out infinite; }
-}
 
-.level-badge {
-  font-size: 0.6875rem; font-weight: 700; color: var(--slate-600);
-  padding: 0.1875rem 0.5rem; border-radius: 9999px;
-  background: var(--slate-100); border: 1px solid var(--slate-200);
-  display: inline-flex; align-items: center; line-height: 1.4;
-}
-
-/* ── Quick Stats Row ── */
-.account-stats-row {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
-  margin-top: 1rem;
-}
-.account-stat-box {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 0.875rem 0.5rem; border-radius: 0.75rem;
-  background: var(--indigo-50); border: 1px solid var(--indigo-100);
-  text-align: center;
-}
-.account-stat-value {
-  font-size: 1.125rem; font-weight: 800; color: var(--indigo-600);
-  line-height: 1.2;
-}
-.account-stat-label {
-  font-size: 0.625rem; font-weight: 600; color: var(--slate-500);
-  text-transform: uppercase; letter-spacing: 0.025em; margin-top: 0.25rem;
-}
-
-/* ── Profile Form 2-col row ── */
-.profile-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-
-/* ── Support Info ── */
-.account-support-card { margin-top: 1.25rem; }
-.account-support-hint {
-  font-size: 0.75rem; color: var(--slate-400); margin: -0.5rem 0 0.75rem;
-}
-.support-info-grid { display: flex; flex-direction: column; gap: 0.5rem; }
-.support-info-row {
-  display: flex; flex-direction: column; gap: 0.125rem;
-}
-.support-info-label {
-  font-size: 0.6875rem; font-weight: 600; color: var(--slate-500);
-  text-transform: uppercase; letter-spacing: 0.025em;
-}
-.support-info-value {
-  display: flex; align-items: center; gap: 0.375rem;
-}
-.support-info-value code {
-  font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--slate-700); background: var(--slate-100);
-  padding: 0.25rem 0.5rem; border-radius: 0.375rem;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  flex: 1; min-width: 0;
-}
-.support-copy-btn {
-  flex-shrink: 0; padding: 0.375rem; border: 1px solid var(--indigo-100);
-  border-radius: 0.5rem; background: var(--white); cursor: pointer;
-  color: var(--slate-500); transition: all 0.15s;
-}
+  /* Egg card now uses .card and .card-body patterns. Only keep minimal overrides for icon and explainer. */
+  .egg-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 1.1rem;
+  }
+  .egg-card-icon {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    vertical-align: middle;
+    color: var(--color-accent-yellow);
+  }
+  .egg-card-title {
+    color: var(--color-text-main);
+  }
+  .egg-card-explainer {
+    font-size: 0.97rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+  }
+  .egg-hatch-optional {
+    color: var(--color-text-tertiary);
+    font-weight: 400;
+    font-size: 0.95em;
+  }
+  .egg-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 1rem;
+    user-select: none;
+  }
+  .egg-toggle-checkbox {
+    accent-color: var(--color-accent-yellow);
+    margin-right: 0.25rem;
+  }
+  .egg-toggle-icon {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    vertical-align: middle;
+    color: var(--color-accent-yellow);
+  }
+  .egg-toggle-text {
+    color: var(--color-text-main);
+  }
+  .egg-toggle-desc {
+    color: var(--color-text-tertiary);
+    font-size: 0.97em;
+    font-weight: 400;
+    margin-left: 0.25em;
+  }
 .support-copy-btn:hover { color: var(--indigo-500); background: var(--indigo-50); }
 
 .auth-form-inner { display: grid; gap: 0.75rem; }
@@ -2789,4 +2775,80 @@ a { text-decoration: none; color: inherit; }
 }
 .danger-zone-divider {
   border: none; border-top: 1px solid var(--red-100); margin: 1rem 0;
+}
+
+/* ── Egg Hosting Card ── */
+.egg-card {
+  background: var(--indigo-50);
+  border: 1.5px solid var(--indigo-200);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 4px rgba(80, 112, 255, 0.07);
+  padding: 1.25rem 1rem 1rem 1rem;
+  margin-bottom: 0.5rem;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.egg-card.active {
+  border-color: var(--amber-400);
+  box-shadow: 0 2px 12px rgba(251,191,36,0.10);
+  background: var(--amber-50);
+}
+.egg-toggle-label {
+  display: flex; align-items: center; gap: 0.75rem;
+  cursor: pointer; font-weight: 700; font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.egg-toggle-checkbox {
+  width: 1.25rem; height: 1.25rem; accent-color: var(--amber-400);
+  margin: 0;
+}
+.egg-toggle-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem;
+  background: var(--amber-100);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(251,191,36,0.10);
+}
+.egg-toggle-icon::before {
+  content: '';
+  display: block;
+  width: 1.25rem; height: 1.25rem;
+  background: none;
+  mask: url('data:image/svg+xml;utf8,<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="10"/><path d="M8 15c1.5-2 6.5-2 8 0"/></svg>') center/contain no-repeat;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="10"/><path d="M8 15c1.5-2 6.5-2 8 0"/></svg>') center/contain no-repeat;
+  background-color: var(--amber-500);
+}
+.egg-toggle-text {
+  display: flex; flex-direction: column;
+}
+.egg-toggle-desc {
+  font-size: 0.85em; font-weight: 400; color: var(--slate-500);
+}
+.egg-card-content {
+  margin-top: 0.5rem;
+  display: none;
+}
+.egg-card.active .egg-card-content {
+  display: block;
+}
+.egg-card-header {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;
+}
+.egg-card-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem;
+}
+.egg-card-icon svg {
+  width: 1.5rem; height: 1.5rem; color: var(--amber-500);
+}
+.egg-card-title {
+  font-weight: 700; color: var(--amber-700); font-size: 1.05rem;
+}
+.egg-card-explainer {
+  font-size: 0.95rem; color: var(--slate-600); margin-bottom: 0.5rem;
+}
+.egg-hatch-time-row {
+  display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.25rem;
+}
+.egg-hatch-optional {
+  color: var(--slate-400); font-weight: 400;
 }
