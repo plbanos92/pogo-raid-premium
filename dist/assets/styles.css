@@ -3984,3 +3984,50 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* append marker */
+
+/* ══════════════════════════════════════════════════════════════════
+   Dark-mode polish for Your Queues view
+   - richer "Waiting for a host" info alert (indigo glass look)
+   - richer Leave Queue buttons (deep rose with inner highlight)
+   ══════════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] .alert-info {
+  background: linear-gradient(160deg, rgba(99,102,241,0.16) 0%, rgba(30,41,59,0.45) 100%);
+  border: 1px solid rgba(129,140,248,0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 4px 16px rgba(0,0,0,0.25),
+    0 0 0 1px rgba(99,102,241,0.10);
+}
+:root[data-theme="dark"] .alert-info svg    { color: #a5b4fc; }
+:root[data-theme="dark"] .alert-info strong { color: #e0e7ff; }
+:root[data-theme="dark"] .alert-info p      { color: rgba(199,210,254,0.85); }
+
+:root[data-theme="dark"] .btn-leave-queue-full,
+:root[data-theme="dark"] .btn-leave-queue {
+  background: linear-gradient(135deg, rgba(159,18,57,0.55) 0%, rgba(136,19,55,0.65) 100%);
+  color: #fecaca;
+  border: 1px solid rgba(244,63,94,0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 4px 12px rgba(190,18,60,0.25);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.35);
+}
+:root[data-theme="dark"] .btn-leave-queue-full:hover,
+:root[data-theme="dark"] .btn-leave-queue:hover {
+  background: linear-gradient(135deg, rgba(190,18,60,0.65) 0%, rgba(159,18,57,0.75) 100%);
+  color: #fee2e2;
+  border-color: rgba(244,63,94,0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 6px 16px rgba(190,18,60,0.35);
+}
+:root[data-theme="dark"] .btn-leave-queue-full svg,
+:root[data-theme="dark"] .btn-leave-queue svg { color: inherit; }
+
+/* Lift the outer queue card slightly so the inner alert/button feel layered */
+:root[data-theme="dark"] .queue-card,
+:root[data-theme="dark"] .queue-card-invited {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.03) inset,
+    0 10px 28px rgba(0,0,0,0.35);
+}
