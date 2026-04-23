@@ -64,6 +64,11 @@
     });
     var html = [];
 
+    // Hide the entire "Your Team" block when the user is alone in the lobby —
+    // it just restates information already shown by the top invite banner and
+    // adds another nested box. The block reappears as soon as a teammate joins.
+    if (!teammates.length) return '';
+
     html.push('<div class="queue-teammates">');
     html.push('  <div class="queue-teammates-header">' + icon('users', 16) + ' Your Team</div>');
 
@@ -775,7 +780,13 @@
         }
 
         if (shouldShowLeaveQueueButton(q.status)) {
-          c.push('<button class="btn-leave-queue-full" data-leave="' + escapeHtml(q.id) + '" type="button">' + icon('xCircle', 18) + ' Leave Queue</button>');
+          // Invited/confirmed cards already carry a prominent primary CTA
+          // ("Friend Request Sent") — render leave as a subtle text button so
+          // the card doesn't end with two stacked full-width buttons.
+          var leaveClass = (q.status === 'invited' || q.status === 'confirmed')
+            ? 'btn-leave-subtle'
+            : 'btn-leave-queue-full';
+          c.push('<button class="' + leaveClass + '" data-leave="' + escapeHtml(q.id) + '" type="button">' + icon('xCircle', 16) + ' Leave Queue</button>');
         }
 
         if (q.status === 'raiding') {
