@@ -33,7 +33,8 @@
     chevronLeft:  '<path d="m15 18-6-6 6-6"/>',
     chevronRight: '<path d="m9 18 6-6-6-6"/>',
     loader:       '<path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/>',
-    egg:          '<ellipse cx="12" cy="12" rx="8" ry="10"/><path d="M8 15c1.5-2 6.5-2 8 0"/>'
+    egg:          '<ellipse cx="12" cy="12" rx="8" ry="10"/><path d="M8 15c1.5-2 6.5-2 8 0"/>',
+    activity:     '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.5.5 0 0 1-.96 0L9.24 2.18a.5.5 0 0 0-.96 0l-2.35 8.36A2 2 0 0 1 4 12H2"/>'
   };
 
   var CURRENT_BOSS_SILHOUETTES = {

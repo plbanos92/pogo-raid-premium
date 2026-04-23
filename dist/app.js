@@ -39,6 +39,10 @@
     adminUsersTotal: 0,
     adminUsersPageSize: 20,
     adminUsersLoading: false,
+    analyticsData: null,
+    analyticsLoading: false,
+    analyticsError: null,
+    analyticsDays: 7,
     appConfig: null,
     realtimeMode: 'polling',
     realtimeRetrying: false,
@@ -300,6 +304,9 @@
     var _prevView = store.getState().view;
     store.setState({ view: view, hostSuccess: false });
     SessionAudit.track('nav', 'nav.view_switch', { from: _prevView, to: view }, false);
+    if (global.Analytics && typeof global.Analytics.track === 'function') {
+      try { global.Analytics.track('view_change', view); } catch (e) {}
+    }
     render(store.getState());
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
@@ -1983,6 +1990,22 @@
       });
   }
 
+  function loadAnalytics(days) {
+    var api = getApi();
+    var d = days || 7;
+    store.setState({ analyticsLoading: true, analyticsError: null, analyticsDays: d });
+    render(store.getState());
+    api.getAnalyticsSummary(d)
+      .then(function (data) {
+        store.setState({ analyticsData: data || null, analyticsLoading: false, analyticsError: null });
+        render(store.getState());
+      })
+      .catch(function (err) {
+        store.setState({ analyticsLoading: false, analyticsError: err && err.message ? err.message : 'Failed to load analytics' });
+        render(store.getState());
+      });
+  }
+
   function initAdminActions() {
     var wrap = qs("adminContent");
     if (!wrap) return;
@@ -1997,6 +2020,21 @@
         if (newTab === 'users' && !store.getState().adminUsers.length) {
           loadAdminUsers(0);
         }
+        if (newTab === 'analytics' && !store.getState().analyticsData) {
+          loadAnalytics(store.getState().analyticsDays || 7);
+        }
+        return;
+      }
+
+      // Analytics range picker
+      var rangeBtn = e.target.closest('[data-analytics-range]');
+      if (rangeBtn) {
+        var d = parseInt(rangeBtn.getAttribute('data-analytics-range'), 10);
+        if (!isNaN(d)) loadAnalytics(d);
+        return;
+      }
+      if (e.target.closest('[data-analytics-refresh]')) {
+        loadAnalytics(store.getState().analyticsDays || 7);
         return;
       }
 
@@ -2388,6 +2426,11 @@
     // Auto-redirect unauthenticated visitors to Account screen on page load
     if (!isAuthed()) {
       store.setState({ view: (QueueFSM.VIEW_KEY || {}).ACCOUNT || 'account' });
+    }
+
+    // Fire initial analytics pageview once the boot view is settled.
+    if (global.Analytics && typeof global.Analytics.track === 'function') {
+      try { global.Analytics.track('pageview', store.getState().view); } catch (e) {}
     }
 
     // Sync footer: refresh button + auto-update relative time

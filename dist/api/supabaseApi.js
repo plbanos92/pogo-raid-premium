@@ -324,6 +324,12 @@
             return Array.isArray(rows) && rows.length > 0 && rows[0].is_admin === true;
           });
       },
+      getAnalyticsSummary: function (days) {
+        return request('/rest/v1/rpc/get_analytics_summary', {
+          method: 'POST',
+          body: { p_days: days || 7 }
+        });
+      },
       getAppConfig: function () {
         return request("/rest/v1/app_config?id=eq.1&select=host_capacity_free,host_capacity_vip,vip_price,vip_price_period,invite_window_seconds,host_inactivity_seconds,vip_features,realtime_slots,audit_config,egg_hatch_default_minutes&limit=1");
       },

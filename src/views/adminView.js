@@ -419,6 +419,7 @@
       '  <button class="admin-tab' + (activeTab === 'users'    ? ' active' : '') + '" data-admin-tab="users">Users</button>',
       '  <button class="admin-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-admin-tab="settings">Settings</button>',
       '  <button class="admin-tab' + (activeTab === 'audit'    ? ' active' : '') + '" data-admin-tab="audit">Audit</button>',
+      '  <button class="admin-tab' + (activeTab === 'analytics'? ' active' : '') + '" data-admin-tab="analytics">Analytics</button>',
       '</div>',
 
       '<div class="admin-tab-panel' + (activeTab === 'bosses' ? ' active' : '') + '">',
@@ -460,6 +461,12 @@
       '<div class="admin-tab-panel' + (activeTab === 'audit' ? ' active' : '') + '" id="admin-panel-audit">',
       renderAuditConfigPanel(state, { escapeHtml: escapeHtml, icon: icon }),
       renderAuditPurgePanel({ icon: icon }),
+      '</div>',
+
+      '<div class="admin-tab-panel' + (activeTab === 'analytics' ? ' active' : '') + '" id="admin-panel-analytics">',
+      (global.AppViews && typeof global.AppViews.renderAnalyticsPanel === 'function'
+        ? global.AppViews.renderAnalyticsPanel(state, { escapeHtml: escapeHtml, icon: icon })
+        : '<div class="alert-info">Analytics module not loaded.</div>'),
       '</div>'
     ].join("\n"));
   };
