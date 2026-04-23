@@ -338,7 +338,8 @@
           var tierStars = renderTierStars(boss.tier);
           var types = Array.isArray(boss.types) ? boss.types : [];
           var typeBadges = types.map(function (t) {
-            return '<span class="tag-type tag-type--sm"><img src="/assets/type-icons/' + escapeHtml(t.toLowerCase()) + '.svg" alt="">' + escapeHtml(t) + '</span>';
+            var slug = t.toLowerCase();
+            return '<span class="tag-type tag-type--sm" data-type="' + escapeHtml(slug) + '"><img src="/assets/type-icons/' + escapeHtml(slug) + '.svg" alt="">' + escapeHtml(t) + '</span>';
           }).join('');
           var fromStr = boss.available_from ? fmtShortDate(boss.available_from) : '—';
           var untilStr = boss.available_until ? fmtShortDate(boss.available_until) : '—';

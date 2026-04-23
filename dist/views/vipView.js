@@ -28,12 +28,22 @@
     var cfg = state.appConfig || {};
     var vipPrice = cfg.vip_price || '$4.99';
     var vipPricePeriod = cfg.vip_price_period || '/mo';
+    var darkPrice = cfg.dark_unlock_price || '$5';
+    var darkPricePeriod = cfg.dark_unlock_price_period || ' one-time';
+    var hasDarkUnlock = isVip; // VIP gets dark mode included; dark-only unlock is cosmetic client-side
     var freeCapacity = cfg.host_capacity_free || 5;
     var features = Array.isArray(cfg.vip_features) ? cfg.vip_features : [
       { icon: 'zap', text: 'Priority Queue Placement' },
       { icon: 'star', text: 'Host up to 10 players' },
       { icon: 'shield', text: 'Ad-free experience' },
-      { icon: 'crown', text: 'Exclusive Discord role' }
+      { icon: 'crown', text: 'Exclusive Discord role' },
+      { icon: 'moon', text: 'Dark Mode theme included' }
+    ];
+    var darkFeatures = Array.isArray(cfg.dark_unlock_features) ? cfg.dark_unlock_features : [
+      { icon: 'moon', text: 'Full dark theme everywhere' },
+      { icon: 'zap', text: 'Smooth neon pills & glow accents' },
+      { icon: 'shield', text: 'Fancy gradient QR frame' },
+      { icon: 'check', text: 'One-time payment, yours forever' }
     ];
 
     updateRenderedHtml(wrap, [
@@ -58,6 +68,19 @@
       '    </div>',
       '    <div class="plan-price">' + escapeHtml(vipPrice) + '<span class="plan-price-sub">' + escapeHtml(vipPricePeriod) + '</span></div>',
       '    <button class="btn-upgrade ' + (isVip ? 'is-vip' : 'not-vip') + '" id="vipUpgradeBtn"' + (isVip ? ' disabled' : '') + '>' + (isVip ? 'VIP Active' : 'Upgrade to VIP') + '</button>',
+      '  </div>',
+
+      '  <div class="plan-card dark-plan">',
+           glow,
+      '    <div class="plan-name">Dark Mode</div>',
+      '    <div class="plan-desc">Unlock the dark theme without a subscription.</div>',
+      '    <div class="plan-features">',
+           darkFeatures.map(function (feature) {
+             return '<div class="plan-feature"><div class="feature-icon">' + icon(feature.icon, 16) + '</div><span>' + escapeHtml(feature.text) + '</span></div>';
+           }).join(""),
+      '    </div>',
+      '    <div class="plan-price">' + escapeHtml(darkPrice) + '<span class="plan-price-sub">' + escapeHtml(darkPricePeriod) + '</span></div>',
+      '    <button class="btn-dark-unlock ' + (hasDarkUnlock ? 'is-owned' : 'not-owned') + '" id="darkUnlockBtn"' + (hasDarkUnlock ? ' disabled' : '') + '>' + (hasDarkUnlock ? 'Included with VIP' : 'Buy Dark Mode') + '</button>',
       '  </div>',
 
       '  <div class="plan-card free-plan">',

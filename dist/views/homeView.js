@@ -142,7 +142,7 @@
         '        <span class="tag-tier">' + escapeHtml(formatTier(boss.tier)) + '</span>',
                  types.map(function (type) {
                    var slug = type.toLowerCase();
-                   return '<span class="tag-type"><img src="/assets/type-icons/' + escapeHtml(slug) + '.svg" alt="">' + escapeHtml(type) + '</span>';
+                   return '<span class="tag-type" data-type="' + escapeHtml(slug) + '"><img src="/assets/type-icons/' + escapeHtml(slug) + '.svg" alt="">' + escapeHtml(type) + '</span>';
                  }).join(""),
         '      </div>',
         '      <h3 class="boss-name">' + escapeHtml(boss.name || "Unknown") + '</h3>',

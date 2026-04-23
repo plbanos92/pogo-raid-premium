@@ -2020,6 +2020,13 @@
 
   function initVipActions() {
     qs("vipContent").addEventListener("click", function (e) {
+      var darkBtn = e.target.closest("#darkUnlockBtn");
+      if (darkBtn) {
+        if (!ensureAuth()) return;
+        setMessage("Checkout coming soon — email support to pre-purchase.", "ok");
+        SessionAudit.track('account', 'account.dark_unlock_click', null, true);
+        return;
+      }
       var target = e.target.closest("#vipUpgradeBtn") || e.target.closest("#vipDowngradeBtn");
       if (!target) return;
       if (!ensureAuth()) return;
