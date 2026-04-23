@@ -2,6 +2,13 @@
   var AppViews = global.AppViews = global.AppViews || {};
   var AppHtml = global.AppHtml || {};
 
+  function fmtCountdown(totalSecs) {
+    var s = Math.max(0, totalSecs);
+    var m = Math.floor(s / 60);
+    var sc = s % 60;
+    return (m < 10 ? '0' + m : '' + m) + ':' + (sc < 10 ? '0' + sc : '' + sc);
+  }
+
   function getStatusLabel(status, deps) {
     var meta = deps.QueueFSM.getQueueStatusMeta(status);
     if (meta.iconName) return deps.icon(meta.iconName, 12) + ' ' + meta.label;
@@ -359,13 +366,13 @@
           var hatchTimeMs = h.hatch_time ? new Date(h.hatch_time).getTime() : 0;
           var preInviteMs = hatchTimeMs ? (hatchTimeMs - 2 * 60 * 1000) : 0;
           var nowMs = Date.now();
-          var minsUntilFill = hatchTimeMs ? Math.ceil((preInviteMs - nowMs) / 60000) : null;
+          var secsUntilFill = hatchTimeMs ? Math.floor((preInviteMs - nowMs) / 1000) : null;
 
           var countdownChip;
           if (!hatchTimeMs) {
             countdownChip = '<span class="form-group-hint" style="display:inline">No hatch time set — open manually.</span>';
-          } else if (minsUntilFill > 0) {
-            countdownChip = '<span style="color:var(--amber-600);font-size:0.8125rem;font-weight:600">' + icon('clock', 13) + ' Lobby fills in ' + minsUntilFill + ' min</span>';
+          } else if (secsUntilFill > 0) {
+            countdownChip = '<span style="color:var(--amber-600);font-size:0.8125rem;font-weight:600">' + icon('clock', 13) + ' Lobby fills in ' + fmtCountdown(secsUntilFill) + '</span>';
           } else {
             countdownChip = '<span style="color:var(--teal-600);font-size:0.8125rem;font-weight:600"><span class="pulse-dot-sm"></span> Filling now\u2026</span>';
           }
@@ -656,12 +663,12 @@
           var raidHatchTime = raid && raid.hatch_time ? new Date(raid.hatch_time).getTime() : 0;
           var raidPreInviteMs = raidHatchTime ? (raidHatchTime - 2 * 60 * 1000) : 0;
           var raidNowMs = Date.now();
-          var raidMinsUntilFill = raidHatchTime ? Math.ceil((raidPreInviteMs - raidNowMs) / 60000) : null;
+          var raidSecsUntilFill = raidHatchTime ? Math.floor((raidPreInviteMs - raidNowMs) / 1000) : null;
           var eggNote;
           if (!raidHatchTime) {
             eggNote = 'Egg lobby — host will open manually.';
-          } else if (raidMinsUntilFill > 0) {
-            eggNote = 'Egg lobby — fills in ' + raidMinsUntilFill + ' min';
+          } else if (raidSecsUntilFill > 0) {
+            eggNote = 'Egg lobby — fills in ' + fmtCountdown(raidSecsUntilFill);
           } else {
             eggNote = 'Egg lobby — filling now\u2026';
           }

@@ -116,18 +116,23 @@
       });
       // JS exceptions — best-effort; only fires if SessionAudit.init() has already run
       window.addEventListener('error', function (e) {
+        var err = e.error;
         track('error', 'error.js_exception', {
           message: e.message || null,
           source:  e.filename || null,
           line:    e.lineno || null,
-          col:     e.colno || null
+          col:     e.colno || null,
+          stack:   (err && err.stack) ? String(err.stack).slice(0, 2000) : null,
+          name:    (err && err.name) || null
         }, true);
       });
       // Unhandled promise rejections
       window.addEventListener('unhandledrejection', function (e) {
         var reason = e.reason;
         track('error', 'error.unhandled_rejection', {
-          message: reason && reason.message ? reason.message : String(reason || 'unknown')
+          message: reason && reason.message ? reason.message : String(reason || 'unknown'),
+          stack:   (reason && reason.stack) ? String(reason.stack).slice(0, 2000) : null,
+          name:    (reason && reason.name) || null
         }, true);
       });
     }

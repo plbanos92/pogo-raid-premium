@@ -177,21 +177,25 @@
           <div class="form-group" id="hostEggGroup">
             <div class="egg-card" id="eggCard">
               <label for="hostEggToggle" class="egg-toggle-label">
-                <input id="hostEggToggle" type="checkbox" class="egg-toggle-checkbox">
-                <span class="egg-toggle-icon"></span>
-                <span class="egg-toggle-text">Egg lobby <span class="egg-toggle-desc">(players join when raid hatches)</span></span>
+                <span class="egg-toggle-icon">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="8" ry="10"/><path d="M8 15c1.5-2 6.5-2 8 0"/></svg>
+                </span>
+                <span class="egg-toggle-text">Egg lobby<span class="egg-toggle-desc">Players join when raid hatches</span></span>
+                <span class="egg-toggle-switch">
+                  <input id="hostEggToggle" type="checkbox" class="egg-toggle-checkbox">
+                  <span class="egg-toggle-track"><span class="egg-toggle-thumb"></span></span>
+                </span>
               </label>
               <div class="egg-card-content" id="eggCardContent">
-                <div class="egg-card-header">
-                  <span class="egg-card-icon"></span>
-                  <span class="egg-card-title">Egg lobby enabled</span>
-                </div>
-                <div class="egg-card-explainer">Players will be matched and invited when the raid hatches. Set the expected hatch time for better coordination.</div>
+                <div class="egg-card-divider"></div>
                 <div class="egg-hatch-time-row">
-                  <label class="form-group-label" for="hostHatchTime">Expected Hatch Time <span class="egg-hatch-optional">(optional)</span></label>
-                  <input id="hostHatchTime" class="form-input" type="datetime-local" step="60">
+                  <label class="form-group-label egg-hatch-label" for="hostHatchTime">
+                    <svg class="egg-hatch-clock-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Hatch time <span class="egg-hatch-optional">(optional)</span>
+                  </label>
+                  <input id="hostHatchTime" class="form-input egg-hatch-input" type="datetime-local" step="60">
+                  <p class="form-group-hint" style="margin-top:0.25rem;">Invites go out 2 min before hatch.</p>
                 </div>
-                <p class="form-group-hint">Players are invited 2 min before this time — giving everyone time to add the host as a friend before the raid hatches.</p>
               </div>
             </div>
           </div>

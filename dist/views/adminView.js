@@ -407,6 +407,7 @@
     ].join("\n") : '';
 
     var realtimeSlots = state.appConfig ? (typeof state.appConfig.realtime_slots === 'number' ? state.appConfig.realtime_slots : '') : '';
+    var eggHatchDefaultMinutes = state.appConfig ? (typeof state.appConfig.egg_hatch_default_minutes === 'number' ? state.appConfig.egg_hatch_default_minutes : 30) : 30;
     var activeTab = state.adminTab || 'bosses';
 
     updateRenderedHtml(el, [
@@ -442,6 +443,14 @@
       '        <div class="form-row form-row--inline">',
       '          <input class="form-input" id="realtimeSlotsInput" type="number" min="0" max="9999" value="' + escapeHtml(String(realtimeSlots)) + '" placeholder="150" style="max-width:120px">',
       '          <button class="btn-primary" id="saveRealtimeSlotsBtn" type="button">Save</button>',
+      '        </div>',
+      '      </div>',
+      '      <div class="form-group" style="margin-top:1.25rem">',
+      '        <label class="form-group-label" for="eggHatchDefaultInput">Default Hatch Time Offset (min)</label>',
+      '        <p class="form-group-hint">Minutes ahead to pre-fill the hatch time when a host enables the egg toggle. (1\u2013\u20141440)</p>',
+      '        <div class="form-row form-row--inline">',
+      '          <input class="form-input" id="eggHatchDefaultInput" type="number" min="1" max="1440" value="' + escapeHtml(String(eggHatchDefaultMinutes)) + '" placeholder="30" style="max-width:120px">',
+      '          <button class="btn-primary" id="saveEggHatchDefaultBtn" type="button">Save</button>',
       '        </div>',
       '      </div>',
       '    </div>',

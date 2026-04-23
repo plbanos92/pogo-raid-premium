@@ -166,6 +166,16 @@
     var container = document.getElementById("toastContainer");
     if (!container) return;
     var kind = type || "info";
+    // Auto-capture every error toast into the audit trail so the exact
+    // user-visible message is recorded alongside the surrounding store snapshot.
+    // `error` is an always-on audit category — never filtered by audit_config.
+    if (kind === "error") {
+      try {
+        SessionAudit.track('error', 'error.toast_shown', {
+          message: String(message == null ? '' : message).slice(0, 500)
+        }, true);
+      } catch (e) { /* audit must never break the UI */ }
+    }
     var ms = typeof duration === "number" ? duration : 5000;
     var iconName = kind === "success" ? "checkCircle" : kind === "error" ? "xCircle" : "alert";
     var el = document.createElement("div");
@@ -236,7 +246,12 @@
     return fetch('/api/vapid-key', {
       headers: { 'Authorization': 'Bearer ' + token }
     }).then(function(res) {
-      if (!res.ok) throw new Error('Failed to fetch VAPID key');
+      if (!res.ok) {
+        return res.text().then(function (body) {
+          var e = new Error('Failed to fetch VAPID key');
+          e.status = res.status; e.body = body; throw e;
+        });
+      }
       return res.json();
     }).then(function(data) {
       var applicationServerKey = urlBase64ToUint8Array(data.key);
@@ -255,14 +270,19 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          p256dh: keys.p256dh,
-          auth: keys.auth,
-          app_mode: navigator.standalone ? 'pwa' : 'browser'
+          p_endpoint: subscription.endpoint,
+          p_p256dh:   keys.p256dh,
+          p_auth:     keys.auth,
+          p_user_agent: navigator.userAgent || null,
+          p_app_mode: navigator.standalone ? 'pwa' : 'browser'
         })
       }).then(function(res) {
-        if (!res.ok) throw new Error('Failed to save subscription');
-        SessionAudit.track('notif', 'notif.subscription_created', null, false);
+        if (!res.ok) {
+          return res.text().then(function (body) {
+            var e = new Error('Failed to save subscription');
+            e.status = res.status; e.body = body; throw e;
+          });
+        }
       });
     });
   }
@@ -1144,13 +1164,23 @@
       // Enable background notifications
       if (e.target.closest('#enableNotifsBtn')) {
         Notification.requestPermission().then(function(permission) {
-          SessionAudit.track('notif', permission === 'granted' ? 'notif.permission_granted' : 'notif.permission_denied', null, false);
+          // Use the always-on `error` category for denial so it is never dropped
+          // by audit_config gating — makes diagnosis reliable.
+          SessionAudit.track('error', permission === 'granted' ? 'notif.permission_granted' : 'notif.permission_denied', { permission: permission }, false);
           renderAccountView(store.getState());
           if (permission !== 'granted') return;
           subscribeToPushNotifications().then(function() {
+            SessionAudit.track('error', 'notif.subscription_created', null, false);
             showToast('Background notifications enabled!', 'success');
           }).catch(function(err) {
             console.warn('[Push] Subscribe failed:', err);
+            SessionAudit.track('error', 'error.notif_subscribe_failed', {
+              message: (err && err.message) || String(err || 'unknown'),
+              name:    (err && err.name) || null,
+              status:  (err && err.status) || null,
+              body:    (err && err.body) ? String(err.body).slice(0, 500) : null,
+              stack:   (err && err.stack) ? String(err.stack).slice(0, 2000) : null
+            }, true);
             showToast('Could not enable notifications. Please try again.', 'error');
           });
         });
@@ -1593,7 +1623,7 @@
       setLoading(true);
       var now = new Date();
       var end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      var isEgg = !!(qs('hostEggToggle') && qs('hostEggToggle').checked);
+      var isEgg = !!(qs('eggCard') && qs('eggCard').classList.contains('active'));
       var hatchTimeRaw = isEgg && qs('hostHatchTime') ? qs('hostHatchTime').value : '';
       var hatchTimeIso = hatchTimeRaw ? new Date(hatchTimeRaw).toISOString() : undefined;
       getApi().createRaid({
@@ -1630,19 +1660,32 @@
         submitBtn.disabled = false;
       }).finally(function () { setLoading(false); });
     });
+    // Egg lobby toggle logic (classic .egg-card-content)
     var eggToggle = qs('hostEggToggle');
-    var hatchTimeGroup = qs('hostHatchTimeGroup');
+    var eggCardContent = qs('eggCardContent');
+    var eggCard = qs('eggCard');
     var submitBtnEl = qs('hostSubmitBtn');
-    if (eggToggle && hatchTimeGroup && submitBtnEl) {
-      eggToggle.addEventListener('change', function () {
-        if (eggToggle.checked) {
-          hatchTimeGroup.classList.remove('hidden');
-          submitBtnEl.textContent = 'Start Egg Hosting';
-        } else {
-          hatchTimeGroup.classList.add('hidden');
-          submitBtnEl.textContent = 'Start Hosting';
+    function updateEggCard() {
+      if (eggToggle.checked) {
+        eggCardContent.style.display = '';
+        eggCard.classList.add('active');
+        submitBtnEl.textContent = 'Start Egg Hosting';
+        var hatchInput = qs('hostHatchTime');
+        if (hatchInput && !hatchInput.value) {
+          var defaultMins = ((store.getState().appConfig || {}).egg_hatch_default_minutes) || 30;
+          var d = new Date(Date.now() + defaultMins * 60 * 1000);
+          var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+          hatchInput.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         }
-      });
+      } else {
+        eggCardContent.style.display = 'none';
+        eggCard.classList.remove('active');
+        submitBtnEl.textContent = 'Start Hosting';
+      }
+    }
+    if (eggToggle && eggCardContent && eggCard && submitBtnEl) {
+      eggToggle.addEventListener('change', updateEggCard);
+      updateEggCard();
     }
   }
 
@@ -1968,6 +2011,21 @@
         var api = getApi();
         api.adminUpdateRealtimeSlots(slots)
           .then(function () { showToast('Realtime slots updated.', 'success'); return refreshData(); })
+          .catch(function (e) { showToast('Failed to update: ' + (e.message || 'Unknown error'), 'error'); });
+        return;
+      }
+
+      // Save egg hatch default minutes (App Settings card)
+      if (e.target.id === 'saveEggHatchDefaultBtn') {
+        var eggHatchInput = document.getElementById('eggHatchDefaultInput');
+        var eggMins = parseInt(eggHatchInput ? eggHatchInput.value : '', 10);
+        if (isNaN(eggMins) || eggMins < 1 || eggMins > 1440) {
+          showToast('Hatch offset must be between 1 and 1440 minutes.', 'error');
+          return;
+        }
+        var api = getApi();
+        api.adminUpdateEggHatchDefault(eggMins)
+          .then(function () { showToast('Default hatch offset updated.', 'success'); return refreshData(); })
           .catch(function (e) { showToast('Failed to update: ' + (e.message || 'Unknown error'), 'error'); });
         return;
       }
