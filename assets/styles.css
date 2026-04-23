@@ -3983,7 +3983,12 @@ a { text-decoration: none; color: inherit; }
   background: rgba(51,65,85,0.6); color: rgba(203,213,225,0.55);
 }
 
-/* append marker */
+/* Queue card boss thumbnail: match the Home boss-card look exactly so the
+   silhouette pops instead of fading into the dark indigo-50 token. */
+:root[data-theme="dark"] .queue-card-header img {
+  background: rgba(238, 242, 255, 0.5);
+  border-color: rgba(199, 210, 254, 0.35);
+}
 
 /* ══════════════════════════════════════════════════════════════════
    Dark-mode polish for Your Queues view
