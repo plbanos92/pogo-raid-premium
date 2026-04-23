@@ -464,10 +464,15 @@
           var qrOpen = !!((state.openLobbyQrs || {})[entry.id]);
           var statusPill = '';
 
+          var inviteAttempts = Number(entry.invite_attempts) || 0;
           if (entry.status === 'queued') {
             statusPill = '<span class="status-pill status-queued">In Lobby</span>';
           } else if (entry.status === 'invited') {
-            statusPill = '<span class="status-pill status-invited">Invited</span>';
+            if (inviteAttempts > 0) {
+              statusPill = '<span class="status-pill status-invited" title="Invite timed out ' + inviteAttempts + ' time' + (inviteAttempts > 1 ? 's' : '') + ' — re-invited automatically">Re-invited #' + inviteAttempts + '</span>';
+            } else {
+              statusPill = '<span class="status-pill status-invited">Invited</span>';
+            }
           } else if (entry.status === 'confirmed') {
             statusPill = '<span class="status-pill status-confirmed">' + icon('check', 12) + ' Friend Request Sent</span>';
           }
@@ -479,6 +484,9 @@
           lp.push('          <div class="lobby-entry-name">' + escapeHtml(name) + '</div>');
           if (statusPill) lp.push('          ' + statusPill);
           lp.push('        </div>');
+          if (entry.status === 'invited' && inviteAttempts > 0) {
+            lp.push('        <div class="lobby-reinvite-hint">' + icon('clock', 12) + ' Invite expired — new invite sent (cycle ' + inviteAttempts + ')</div>');
+          }
           lp.push(renderTrainerMeta(entry.team, entry.trainer_level, 'lobby-entry-meta'));
           lp.push(buildLobbyQrMarkup(entry, {
             escapeHtml: escapeHtml,

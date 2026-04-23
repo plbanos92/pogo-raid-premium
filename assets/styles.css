@@ -2229,6 +2229,19 @@ a { text-decoration: none; color: inherit; }
 .status-raiding { background: var(--indigo-100); color: var(--indigo-700); }
 .status-done { background: var(--teal-100); color: var(--teal-700); }
 
+/* Inline hint shown in host manage-lobby when a joiner's invite has expired
+   and the system auto-cycled a fresh invite (invite_attempts > 0). */
+.lobby-reinvite-hint {
+  display: inline-flex; align-items: center; gap: 0.3125rem;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem; font-weight: 600;
+  color: var(--amber-700);
+  line-height: 1.2;
+}
+.lobby-reinvite-hint svg {
+  width: 0.75rem; height: 0.75rem; flex-shrink: 0;
+}
+
 /* Pulsing dot for raiding status */
 .pulse-dot-sm {
   width: 0.375rem; height: 0.375rem; border-radius: 50%;

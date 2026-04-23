@@ -551,8 +551,20 @@
   function runQueueMaintenance(api, state) {
     var hosts = state.hosts || [];
     if (!hosts.length) return Promise.resolve();
+    SessionAudit.track('data', 'maintenance.expire_start', { host_count: hosts.length }, false);
     var tasks = hosts.map(function (h) {
-      return api.expireStaleInvites(h.id).catch(function () {})
+      return api.expireStaleInvites(h.id).then(function (reverted) {
+        var count = Number(reverted) || 0;
+        if (count > 0) {
+          SessionAudit.track('data', 'maintenance.expire_result', { raid_id: h.id, reverted: count }, false);
+        }
+      }).catch(function (err) {
+        SessionAudit.track('error', 'maintenance.expire_error', {
+          raid_id: h.id,
+          message: (err && err.message) || String(err),
+          status: err && err.status
+        }, false);
+      })
         .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); })
         .then(function () { return api.touchHostActivity(h.id).catch(function () {}); });
     });
