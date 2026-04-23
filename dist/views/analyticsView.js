@@ -115,8 +115,39 @@
     return '<div class="analytics-hour-grid">' + cells.join('') + '</div>';
   }
 
-  function renderRecentRows(rows) {
-    if (!rows || !rows.length) {
+  function fmtMs(n) {
+    if (n == null || !Number.isFinite(Number(n))) return '—';
+    var v = Number(n);
+    if (v >= 1000) return (v / 1000).toFixed(2) + ' s';
+    return Math.round(v) + ' ms';
+  }
+
+  function renderPerfBlock(perf) {
+    if (!perf || !perf.samples) {
+      return [
+        '<div class="analytics-block">',
+        '  <h3 class="analytics-block-title">Performance (page load)</h3>',
+        '  <div class="analytics-empty">No performance samples yet.</div>',
+        '</div>'
+      ].join('');
+    }
+    var cards = [
+      statCard('Samples',   perf.samples,         'page_load_ms'),
+      statCard('Avg load',  perf.avg_page_load_ms, fmtMs(perf.avg_page_load_ms)),
+      statCard('p50 load',  perf.p50_page_load_ms, fmtMs(perf.p50_page_load_ms)),
+      statCard('p95 load',  perf.p95_page_load_ms, fmtMs(perf.p95_page_load_ms)),
+      statCard('p50 FCP',   perf.p50_fcp_ms,       fmtMs(perf.p50_fcp_ms)),
+      statCard('p95 FCP',   perf.p95_fcp_ms,       fmtMs(perf.p95_fcp_ms))
+    ].join('');
+    return [
+      '<div class="analytics-block">',
+      '  <h3 class="analytics-block-title">Performance (page load)</h3>',
+      '  <div class="analytics-stat-grid">' + cards + '</div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderRecentRows(rows) {    if (!rows || !rows.length) {
       return '<div class="analytics-empty">No recent hits.</div>';
     }
     var out = ['<div class="analytics-recent-table"><table><thead><tr>',
@@ -201,9 +232,13 @@
       statCard('Hits', totals ? totals.hits : 0, 'last ' + days + 'd'),
       statCard('Unique visitors', totals ? totals.unique_visitors : 0, 'last ' + days + 'd'),
       statCard('Unique sessions', totals ? totals.unique_sessions : 0, 'last ' + days + 'd'),
+      statCard('New sessions', totals ? (totals.new_sessions || 0) : 0, 'session starts'),
+      statCard('New visitors', totals ? (totals.new_visitors || 0) : 0, 'first-time'),
       statCard('Authed visitors', totals ? totals.authed_visitors : 0, 'signed in'),
       statCard('Anonymous', totals ? totals.anon_visitors : 0, 'not signed in'),
       statCard('Countries', totals ? totals.countries : 0, 'reached'),
+      statCard('PWA hits', totals ? (totals.pwa_hits || 0) : 0, 'installed app'),
+      statCard('Bot hits', totals ? (totals.bot_hits || 0) : 0, 'navigator.webdriver'),
       statCard('Lifetime hits', lifetime ? lifetime.hits : 0, 'all-time'),
       statCard('Lifetime visitors', lifetime ? lifetime.visitors : 0, 'all-time')
     ].join('');
@@ -240,6 +275,33 @@
       '<div class="analytics-two-col">',
       renderBarList('Device types', data.devices, 'device_type'),
       renderBarList('Languages', data.languages, 'language'),
+      '</div>',
+
+      '<div class="analytics-two-col">',
+      renderBarList('Screen orientation', data.orientations, 'orientation'),
+      renderBarList('Network quality', data.effective_types, 'effective_type'),
+      '</div>',
+
+      renderPerfBlock(data.perf),
+
+      '<div class="analytics-two-col">',
+      renderBarList('UTM sources', data.utm_sources, 'source'),
+      renderBarList('UTM mediums', data.utm_mediums, 'medium'),
+      '</div>',
+
+      '<div class="analytics-two-col">',
+      renderBarList('UTM campaigns', data.utm_campaigns, 'campaign'),
+      renderBarList('Navigation type', data.nav_types, 'nav_type', { fallbackEmpty: true }),
+      '</div>',
+
+      '<div class="analytics-block">',
+      '  <h3 class="analytics-block-title">Top entry pages (new sessions)</h3>',
+      '  ' + (data.entry_paths && data.entry_paths.length
+          ? data.entry_paths.map(function (r, idx) {
+              var maxS = data.entry_paths[0].sessions || 1;
+              return barRow(r.path || '(root)', r.sessions, maxS, fmtInt(r.sessions) + ' sessions');
+            }).join('')
+          : '<div class="analytics-empty">No new sessions recorded yet.</div>'),
       '</div>',
 
       '<div class="analytics-block">',
