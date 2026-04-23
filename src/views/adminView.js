@@ -423,7 +423,16 @@
       '</div>',
 
       '<div class="admin-tab-panel' + (activeTab === 'bosses' ? ' active' : '') + '">',
-      '  <button class="btn-primary admin-toggle-add" id="adminToggleAdd" type="button">' + icon('plus', 16) + ' Add Boss</button>',
+      '  <div class="admin-section-toolbar">',
+      '    <div class="admin-section-toolbar-title">',
+      '      ' + icon('clipboard', 16),
+      '      <span>Manage Bosses</span>',
+      '      <span class="admin-section-toolbar-count">' + bosses.length + '</span>',
+      '    </div>',
+      '    <button class="btn-primary admin-toggle-add" id="adminToggleAdd" type="button" aria-expanded="' + (showAdd ? 'true' : 'false') + '">' +
+           (showAdd ? icon('xCircle', 14) + ' Cancel' : icon('plus', 14) + ' Add Boss') +
+           '</button>',
+      '  </div>',
       addFormHtml,
       '  <div id="adminBossList">' + listHtml + '</div>',
       '</div>',
