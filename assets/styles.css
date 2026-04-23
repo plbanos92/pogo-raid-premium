@@ -3271,6 +3271,148 @@ a { text-decoration: none; color: inherit; }
   max-width: 100%;
   overflow: hidden;   /* clip any rogue inner content on mobile Safari */
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Dark Mode (VIP-gated) — activated via [data-theme="dark"] on <html>
+   ══════════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"] {
+  /* Surfaces */
+  --white: #111827;
+  --slate-50:  #1e293b;
+  --slate-100: #263449;
+  --slate-200: #334155;
+  --slate-300: #475569;
+  /* Neutral ramp (kept usable) */
+  --slate-400: #94a3b8;
+  /* Text (inverted) */
+  --slate-500: #cbd5e1;
+  --slate-600: #e2e8f0;
+  --slate-700: #f1f5f9;
+  --slate-800: #f8fafc;
+  /* Soft indigo tints → dark indigo surfaces */
+  --indigo-50:  #1e1b4b;
+  --indigo-100: #312e81;
+  /* Soft status tints so pills don't glare on dark */
+  --amber-50:  #3a2a07;
+  --amber-100: #4a360a;
+  --teal-50:   #0b3b33;
+  --teal-100:  #0f4f45;
+  --pink-50:   #3a1132;
+  --pink-100:  #4a1740;
+  --rose-50:   #3a0f1a;
+  --red-100:   #3a1414;
+  --green-100: #0b3a23;
+}
+
+:root[data-theme="dark"] body {
+  background-color: #0b1220;
+}
+
+/* Specific hardcoded rgba overrides that don't flow through tokens */
+:root[data-theme="dark"] .nav-link:hover { background: rgba(99, 102, 241, 0.12); }
+:root[data-theme="dark"] .filter-modal-backdrop { background: rgba(0, 0, 0, 0.55); }
+:root[data-theme="dark"] .filter-modal-content { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6); }
+
+/* Cards that use hardcoded #fff fall back to --white via this helper */
+:root[data-theme="dark"] .analytics-block { background: var(--white); }
+
+/* ── Appearance (theme toggle) card ─────────────────────────────── */
+.appearance-card { margin-top: 1.25rem; }
+
+.appearance-segment {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: 0.75rem;
+  padding: 0.375rem;
+  margin-top: 0.75rem;
+}
+
+.appearance-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--slate-600);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  min-width: 0;
+}
+.appearance-seg-btn:hover { color: var(--indigo-600); }
+.appearance-seg-btn.active {
+  background: var(--white);
+  color: var(--indigo-600);
+  border-color: var(--indigo-200);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.appearance-seg-btn svg { flex-shrink: 0; }
+
+.appearance-hint {
+  font-size: 0.75rem;
+  color: var(--slate-500);
+  margin-top: 0.5rem;
+}
+
+/* Locked (non-VIP) variant */
+.appearance-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+  padding: 1rem 0.5rem 0.25rem;
+}
+.appearance-lock-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--amber-100), var(--amber-300));
+  color: var(--amber-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.appearance-lock-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--slate-800);
+  margin: 0;
+}
+.appearance-lock-sub {
+  font-size: 0.8125rem;
+  color: var(--slate-500);
+  margin: 0;
+  max-width: 22rem;
+}
+.appearance-lock-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  background: linear-gradient(135deg, var(--amber-400), var(--amber-500));
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.appearance-lock-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(217, 119, 6, 0.45);
+}
 .analytics-block-title {
   font-size: 0.875rem;
   font-weight: 700;

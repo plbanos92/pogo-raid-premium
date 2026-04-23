@@ -9,6 +9,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/styles.css">
   <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    // Apply saved theme before first paint to avoid FOUC.
+    // Dark mode is VIP-gated but applied eagerly here; app.js reverts
+    // non-VIPs to 'light' after auth resolves.
+    (function () {
+      try {
+        var t = localStorage.getItem('rs_theme') || 'light';
+        var resolved = t;
+        if (t === 'auto') {
+          resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        if (resolved === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
 </head>
 <body>
 

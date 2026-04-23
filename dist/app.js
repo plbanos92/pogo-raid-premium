@@ -46,7 +46,11 @@
     appConfig: null,
     realtimeMode: 'polling',
     realtimeRetrying: false,
-    realtimeSlotStats: null
+    realtimeSlotStats: null,
+    theme: (function () {
+      try { return localStorage.getItem('rs_theme') || 'light'; }
+      catch (_) { return 'light'; }
+    })()
   });
 
   var AppConstants = global.AppConstants || {
@@ -290,6 +294,54 @@
       });
     });
   }
+
+  /* ═══════════════════════════════════════════════════════════════
+     Theme (dark mode, VIP-gated)
+     ═══════════════════════════════════════════════════════════════ */
+  function resolveTheme(t) {
+    if (t === 'auto') {
+      try {
+        return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      } catch (_) { return 'light'; }
+    }
+    return t === 'dark' ? 'dark' : 'light';
+  }
+
+  function applyTheme(t) {
+    var resolved = resolveTheme(t);
+    if (resolved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  // Listen for OS theme changes while user is on 'auto'
+  try {
+    var _mql = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (_mql && _mql.addEventListener) {
+      _mql.addEventListener('change', function () {
+        if ((store.getState().theme || 'light') === 'auto') {
+          applyTheme('auto');
+        }
+      });
+    }
+  } catch (_) { /* ignore */ }
+
+  // Apply any saved theme from state on boot (keeps runtime in sync with pre-paint script).
+  try { applyTheme(store.getState().theme || 'light'); } catch (_) { /* ignore */ }
+
+  // Re-check theme eligibility after each auth/data refresh: if the user is
+  // not VIP, force theme back to 'light' (covers the boot case where dark
+  // was applied from localStorage before we knew VIP status).
+  store.subscribe(function (state) {
+    if (!state.isVip && (state.theme || 'light') !== 'light') {
+      try { localStorage.setItem('rs_theme', 'light'); } catch (_) { /* ignore */ }
+      applyTheme('light');
+      // Defer to avoid setState-in-subscribe loops
+      setTimeout(function () { store.setState({ theme: 'light' }); }, 0);
+    }
+  });
 
   function switchView(view) {
     if (QueueFSM.VIEW_KEY) {
@@ -1203,6 +1255,23 @@
             showToast('Could not enable notifications. Please try again.', 'error');
           });
         });
+        return;
+      }
+
+      // Theme toggle (VIP-gated dark mode)
+      var themeBtn = e.target.closest('[data-theme-btn]');
+      if (themeBtn) {
+        var nextTheme = themeBtn.getAttribute('data-theme-btn');
+        if (!store.getState().isVip && nextTheme !== 'light') {
+          // Shouldn't be reachable (UI hides toggle for non-VIPs), but guard anyway.
+          switchView(QueueFSM.VIEW_KEY.VIP);
+          return;
+        }
+        applyTheme(nextTheme);
+        store.setState({ theme: nextTheme });
+        try { localStorage.setItem('rs_theme', nextTheme); } catch (_) { /* ignore */ }
+        SessionAudit.track('account', 'account.theme_changed', { theme: nextTheme }, false);
+        renderAccountView(store.getState());
         return;
       }
 
