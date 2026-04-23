@@ -677,59 +677,36 @@ a { text-decoration: none; color: inherit; }
 .form-select:focus { border-color: var(--indigo-300); box-shadow: 0 0 0 3px var(--indigo-100); }
 
 .pill-vip {
+  position: relative;
   display: inline-flex; align-items: center; gap: 0.3rem;
-  padding: 0.1875rem 0.625rem; border-radius: 9999px;
+  padding: 0.25rem 0.625rem; border-radius: 9999px;
   background: linear-gradient(135deg, #fde68a 0%, #fbbf24 55%, #f59e0b 100%);
-  border: 1px solid rgba(180, 83, 9, 0.35);
+  border: 1px solid rgba(180, 83, 9, 0.40);
   color: #78350f;
-  font-size: 0.6875rem; font-weight: 800; line-height: 1.4;
-  letter-spacing: 0.02em;
+  font-size: 0.6875rem; font-weight: 700; line-height: 1.4;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -1px 0 rgba(180, 83, 9, 0.25),
-    0 2px 6px rgba(217, 119, 6, 0.35),
-    0 0 0 0 rgba(251, 191, 36, 0.55);
-  position: relative;
-  isolation: isolate;
+    inset 0 -1px 0 rgba(180, 83, 9, 0.22),
+    0 2px 6px rgba(217, 119, 6, 0.32);
 }
-.pill-vip::before {
+.pill-vip::after {
   content: "";
-  position: absolute; inset: 0; border-radius: inherit;
-  background: linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%);
-  background-size: 200% 100%;
-  background-position: 200% 0;
+  position: absolute; inset: -2px; border-radius: 9999px;
+  box-shadow: 0 0 10px 2px rgba(251, 191, 36, 0.60);
+  opacity: 0.55;
   pointer-events: none;
-  z-index: 1;
-  mix-blend-mode: overlay;
+  z-index: -1;
+  will-change: opacity;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .pill-vip { animation: vipGlow 2.4s ease-in-out infinite; }
-  .pill-vip::before { animation: vipShine 3.6s ease-in-out infinite; }
+  .pill-vip::after { animation: pillPulseGold 2.2s ease-in-out infinite; }
 }
-.pill-vip svg { width: 0.75rem; height: 0.75rem; position: relative; z-index: 2; color: #78350f; filter: drop-shadow(0 1px 0 rgba(255,255,255,0.4)); }
-.pill-vip > :not(::before) { position: relative; z-index: 2; }
-
-@keyframes vipGlow {
-  0%, 100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.55),
-      inset 0 -1px 0 rgba(180, 83, 9, 0.25),
-      0 2px 6px rgba(217, 119, 6, 0.35),
-      0 0 0 0 rgba(251, 191, 36, 0.45);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.65),
-      inset 0 -1px 0 rgba(180, 83, 9, 0.3),
-      0 2px 8px rgba(217, 119, 6, 0.55),
-      0 0 14px 2px rgba(251, 191, 36, 0.65);
-  }
+@keyframes pillPulseGold {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.95; }
 }
-@keyframes vipShine {
-  0%, 40%, 100% { background-position: 200% 0; }
-  60% { background-position: -50% 0; }
-}
+.pill-vip svg { width: 0.75rem; height: 0.75rem; color: #78350f; filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4)); }
 
 .btn-sign-out {
   width: 100%; padding: 0.75rem; font-size: 0.875rem; font-weight: 600;
@@ -3449,109 +3426,79 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ── Dark-mode pill glow amplification ─────────────────────────
-   Neon-style: dark translucent bg, bright border + text with glow,
-   large animated box-shadow rings. Hard to miss. */
+   Uses a ::after pseudo-element that animates ONLY opacity for a
+   buttery-smooth GPU-compositor pulse (no shadow-redraw jank). */
+:root[data-theme="dark"] .team-badge,
+:root[data-theme="dark"] .sync-pill--realtime {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-theme="dark"] .team-badge::after,
+:root[data-theme="dark"] .sync-pill--realtime::after {
+  content: "";
+  position: absolute; inset: -2px; border-radius: 9999px;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.5;
+  will-change: opacity;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme="dark"] .team-badge::after,
+  :root[data-theme="dark"] .sync-pill--realtime::after {
+    animation: pillPulseDark 2s ease-in-out infinite;
+  }
+}
+@keyframes pillPulseDark {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.95; }
+}
+
+/* Team Mystic — indigo neon */
 :root[data-theme="dark"] .team-badge.team-mystic {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(99, 102, 241, 0.18);
   border: 1px solid #818cf8;
   color: #e0e7ff;
-  text-shadow: 0 0 6px rgba(129, 140, 248, 0.85), 0 0 12px rgba(99, 102, 241, 0.5);
+  text-shadow: 0 0 6px rgba(129, 140, 248, 0.70);
+  animation: none;   /* override light-mode box-shadow pulse */
 }
+:root[data-theme="dark"] .team-badge.team-mystic::after {
+  box-shadow: 0 0 10px 2px rgba(129, 140, 248, 0.75);
+}
+
+/* Team Valor — red neon */
 :root[data-theme="dark"] .team-badge.team-valor {
   background: rgba(239, 68, 68, 0.20);
   border: 1px solid #f87171;
   color: #fff1f2;
-  text-shadow: 0 0 6px rgba(248, 113, 113, 0.95), 0 0 14px rgba(239, 68, 68, 0.6);
+  text-shadow: 0 0 6px rgba(248, 113, 113, 0.80);
+  animation: none;
 }
+:root[data-theme="dark"] .team-badge.team-valor::after {
+  box-shadow: 0 0 10px 2px rgba(248, 113, 113, 0.80);
+}
+
+/* Team Instinct — amber neon */
 :root[data-theme="dark"] .team-badge.team-instinct {
-  background: rgba(245, 158, 11, 0.20);
+  background: rgba(245, 158, 11, 0.22);
   border: 1px solid #fbbf24;
   color: #fffbeb;
-  text-shadow: 0 0 6px rgba(251, 191, 36, 0.95), 0 0 14px rgba(245, 158, 11, 0.6);
+  text-shadow: 0 0 6px rgba(251, 191, 36, 0.80);
+  animation: none;
+}
+:root[data-theme="dark"] .team-badge.team-instinct::after {
+  box-shadow: 0 0 10px 2px rgba(251, 191, 36, 0.80);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  :root[data-theme="dark"] .team-badge.team-mystic {
-    animation: auraMysticDark 1.6s ease-in-out infinite;
-  }
-  :root[data-theme="dark"] .team-badge.team-valor {
-    animation: auraValorDark 1.5s ease-in-out infinite;
-  }
-  :root[data-theme="dark"] .team-badge.team-instinct {
-    animation: auraInstinctDark 1.4s ease-in-out infinite;
-  }
-  :root[data-theme="dark"] .sync-pill--realtime {
-    animation: liveGlowDark 1.3s ease-in-out infinite;
-  }
-}
-
-@keyframes auraMysticDark {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 rgba(129, 140, 248, 0.70),
-      0 0 12px rgba(129, 140, 248, 0.55),
-      inset 0 0 10px rgba(129, 140, 248, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 0 6px rgba(129, 140, 248, 0.18),
-      0 0 28px rgba(129, 140, 248, 0.95),
-      0 0 48px rgba(99, 102, 241, 0.55),
-      inset 0 0 14px rgba(129, 140, 248, 0.40);
-  }
-}
-@keyframes auraValorDark {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 rgba(248, 113, 113, 0.70),
-      0 0 12px rgba(248, 113, 113, 0.60),
-      inset 0 0 10px rgba(248, 113, 113, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 0 6px rgba(248, 113, 113, 0.22),
-      0 0 28px rgba(248, 113, 113, 1),
-      0 0 48px rgba(239, 68, 68, 0.65),
-      inset 0 0 14px rgba(248, 113, 113, 0.40);
-  }
-}
-@keyframes auraInstinctDark {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 rgba(251, 191, 36, 0.70),
-      0 0 12px rgba(251, 191, 36, 0.60),
-      inset 0 0 10px rgba(251, 191, 36, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 0 6px rgba(251, 191, 36, 0.22),
-      0 0 28px rgba(251, 191, 36, 1),
-      0 0 48px rgba(245, 158, 11, 0.65),
-      inset 0 0 14px rgba(251, 191, 36, 0.40);
-  }
-}
-@keyframes liveGlowDark {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 rgba(94, 234, 212, 0.70),
-      0 0 12px rgba(94, 234, 212, 0.65),
-      inset 0 0 10px rgba(94, 234, 212, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 0 6px rgba(94, 234, 212, 0.25),
-      0 0 30px rgba(94, 234, 212, 1),
-      0 0 52px rgba(20, 184, 166, 0.70),
-      inset 0 0 14px rgba(94, 234, 212, 0.45);
-  }
-}
-
-/* Sync Live pill on dark — neon teal */
+/* Sync Live pill — teal neon */
 :root[data-theme="dark"] .sync-pill--realtime {
   background: rgba(20, 184, 166, 0.18);
   border: 1px solid #5eead4;
   color: #ccfbf1;
-  text-shadow: 0 0 6px rgba(94, 234, 212, 0.95), 0 0 14px rgba(20, 184, 166, 0.6);
+  text-shadow: 0 0 6px rgba(94, 234, 212, 0.80);
+  animation: none;   /* drop base liveGlow, pseudo handles pulse */
+}
+:root[data-theme="dark"] .sync-pill--realtime::after {
+  box-shadow: 0 0 10px 2px rgba(94, 234, 212, 0.85);
 }
 :root[data-theme="dark"] .sync-pill--polling {
   background: rgba(148, 163, 184, 0.12);
@@ -3559,39 +3506,17 @@ a { text-decoration: none; color: inherit; }
   color: #cbd5e1;
 }
 
-/* VIP pill on dark — molten gold with huge ember aura */
+/* VIP pill on dark — molten gold but tamed: keep inner enamel rich,
+   shrink outer ember so it doesn't eclipse neighbors. */
 :root[data-theme="dark"] .pill-vip {
-  border-color: #fde68a;
-  background: linear-gradient(135deg, #fef3c7 0%, #fbbf24 45%, #f59e0b 100%);
-  color: #422006;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  border-color: rgba(251, 191, 36, 0.70);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.70),
-    inset 0 -1px 0 rgba(180, 83, 9, 0.40),
-    0 2px 10px rgba(217, 119, 6, 0.75),
-    0 0 18px 4px rgba(251, 191, 36, 0.70),
-    0 0 34px 8px rgba(245, 158, 11, 0.45);
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0 rgba(180, 83, 9, 0.30),
+    0 2px 8px rgba(217, 119, 6, 0.45);
 }
-@media (prefers-reduced-motion: no-preference) {
-  :root[data-theme="dark"] .pill-vip { animation: vipGlowDark 1.6s ease-in-out infinite; }
-}
-@keyframes vipGlowDark {
-  0%, 100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.70),
-      inset 0 -1px 0 rgba(180, 83, 9, 0.40),
-      0 2px 10px rgba(217, 119, 6, 0.75),
-      0 0 16px 3px rgba(251, 191, 36, 0.65),
-      0 0 30px 6px rgba(245, 158, 11, 0.40);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.85),
-      inset 0 -1px 0 rgba(180, 83, 9, 0.45),
-      0 3px 14px rgba(217, 119, 6, 0.95),
-      0 0 30px 6px rgba(251, 191, 36, 1),
-      0 0 56px 14px rgba(245, 158, 11, 0.75);
-  }
+:root[data-theme="dark"] .pill-vip::after {
+  box-shadow: 0 0 12px 2px rgba(251, 191, 36, 0.70);
 }
 
 /* Stat card numbers on Account page — ensure high contrast on dark */
