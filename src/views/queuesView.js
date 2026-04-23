@@ -701,14 +701,20 @@
           c.push('</div>');
         }
 
-        var showHostBlock = (q.status === 'queued' || q.status === 'invited' || q.status === 'confirmed' || q.status === 'raiding')
-          && (hostFriendCode || (hostProfile && (hostProfile.in_game_name || hostProfile.display_name || hostProfile.team || hostProfile.trainer_level)));
+        var hostHasProfile = hostProfile && (hostProfile.in_game_name || hostProfile.display_name || hostProfile.team || hostProfile.trainer_level);
+        // Pre-raid states (queued/invited/confirmed) show the full friend-code block
+        // because the joiner still needs to add the host. During `raiding` the user
+        // has already friended the host, so collapse to a single inline line to cut
+        // the boxes-in-boxes noise visible in the card while the raid is in progress.
+        var showHostBlock = (q.status === 'queued' || q.status === 'invited' || q.status === 'confirmed')
+          && (hostFriendCode || hostHasProfile);
+        var showHostInline = q.status === 'raiding' && hostHasProfile;
 
         if (showHostBlock) {
           var hostQrKey = 'host-' + q.id;
           var hostQrOpen = !!((state.openLobbyQrs || {})[hostQrKey]);
           c.push('<div class="friend-code-block">');
-          if (hostProfile && (hostProfile.in_game_name || hostProfile.display_name || hostProfile.team || hostProfile.trainer_level)) {
+          if (hostHasProfile) {
             c.push('  <div class="friend-code-host-meta">');
             c.push('    <div class="friend-code-host-name">' + icon('user', 14) + '<span>Host: ' + escapeHtml(getTrainerDisplayName(hostProfile)) + '</span></div>');
             c.push(renderTrainerMeta(hostProfile.team, hostProfile.trainer_level, 'friend-code-host-badges'));
@@ -725,6 +731,13 @@
               c.push('  <div class="lobby-qr-preview"><div class="lobby-qr-canvas" data-friend-code="' + escapeHtml(hostFriendCode) + '"></div><p>Scan to add the host</p></div>');
             }
           }
+          c.push('</div>');
+        } else if (showHostInline) {
+          c.push('<div class="host-inline-line">');
+          c.push('  ' + icon('user', 14));
+          c.push('  <span class="host-inline-label">Host</span>');
+          c.push('  <span class="host-inline-name">' + escapeHtml(getTrainerDisplayName(hostProfile)) + '</span>');
+          c.push(renderTrainerMeta(hostProfile.team, hostProfile.trainer_level, 'host-inline-badges'));
           c.push('</div>');
         }
 
@@ -817,7 +830,12 @@
           c.push('</div>');
         }
 
-        if (raid && isTerminalRaidStatus(raid.status)) {
+        // The terminal alert below is only useful when the raid ended while the
+        // user is still in a pre-terminal queue state (invited/confirmed/queued)
+        // — i.e. the raid was cancelled out from under them. When q.status is
+        // already 'done', the top "Raid complete! GG" banner covers it and a
+        // second alert is redundant.
+        if (raid && isTerminalRaidStatus(raid.status) && q.status !== 'done') {
           var terminalLabel = raid.status === 'completed' ? 'This raid has been completed.' : 'This raid was cancelled.';
           c.push('<div class="alert-warning" style="margin-top:0.5rem">' + icon('xCircle', 16) + ' ' + escapeHtml(terminalLabel) + '</div>');
         }
