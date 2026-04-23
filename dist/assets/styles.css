@@ -3274,25 +3274,34 @@ a { text-decoration: none; color: inherit; }
 
 /* ══════════════════════════════════════════════════════════════════
    Dark Mode (VIP-gated) — activated via [data-theme="dark"] on <html>
+   Palette: GitHub-dimmed inspired — warm slate with layered elevation.
    ══════════════════════════════════════════════════════════════════ */
 :root[data-theme="dark"] {
-  /* Surfaces */
-  --white: #111827;
-  --slate-50:  #1e293b;
-  --slate-100: #263449;
-  --slate-200: #334155;
-  --slate-300: #475569;
-  /* Neutral ramp (kept usable) */
+  /* Surfaces — body is darkest, cards are +1 step, inner chips +2 */
+  --white:     #1e293b;   /* card / modal surface */
+  --slate-50:  #273449;   /* inner chip / subtle bg */
+  --slate-100: #334155;   /* hover / divider */
+  --slate-200: #3e4a63;   /* card border (visible against body + surface) */
+  --slate-300: #4b5876;
+  /* Muted icon / placeholder tier */
   --slate-400: #94a3b8;
-  /* Text (inverted) */
+  /* Text ramp (inverted — lighter = stronger) */
   --slate-500: #cbd5e1;
   --slate-600: #e2e8f0;
-  --slate-700: #f1f5f9;
+  --slate-700: #eef2f7;
   --slate-800: #f8fafc;
-  /* Soft indigo tints → dark indigo surfaces */
-  --indigo-50:  #1e1b4b;
-  --indigo-100: #312e81;
-  /* Soft status tints so pills don't glare on dark */
+
+  /* Indigo tints → deep violet-slate so "subtle indigo" surfaces still read as accent */
+  --indigo-50:  #1f2547;   /* subtle accent bg (e.g. nav hover, in-queue box) */
+  --indigo-100: #2a3270;   /* stronger accent bg + card accent border */
+  --indigo-200: #3c4494;
+  /* Interactive indigo stays bright — lift shades a touch for contrast on dark */
+  --indigo-400: #8b95ff;
+  --indigo-500: #7c87ff;
+  --indigo-600: #6b75f5;
+  --indigo-700: #5b63dd;
+
+  /* Status tints softened so pills don't glare */
   --amber-50:  #3a2a07;
   --amber-100: #4a360a;
   --teal-50:   #0b3b33;
@@ -3304,17 +3313,63 @@ a { text-decoration: none; color: inherit; }
   --green-100: #0b3a23;
 }
 
+/* Body: warm deep slate — slightly lighter than pure black for eye comfort */
 :root[data-theme="dark"] body {
-  background-color: #0b1220;
+  background-color: #0f172a;
+  color: var(--slate-700);
+}
+
+/* Stronger card separation: add subtle top highlight + visible border */
+:root[data-theme="dark"] .boss-card,
+:root[data-theme="dark"] .account-card,
+:root[data-theme="dark"] .queue-card,
+:root[data-theme="dark"] .filter-modal-content,
+:root[data-theme="dark"] .analytics-block {
+  background: var(--white);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
+              0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* In Queue / Open Hosts stat boxes — light rgbas become dead grey on dark;
+   restore saturation with dark indigo/teal tints. */
+:root[data-theme="dark"] .stat-box.queue {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+:root[data-theme="dark"] .stat-box.host {
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.22);
 }
 
 /* Specific hardcoded rgba overrides that don't flow through tokens */
-:root[data-theme="dark"] .nav-link:hover { background: rgba(99, 102, 241, 0.12); }
-:root[data-theme="dark"] .filter-modal-backdrop { background: rgba(0, 0, 0, 0.55); }
-:root[data-theme="dark"] .filter-modal-content { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6); }
+:root[data-theme="dark"] .nav-link:hover { background: rgba(124, 135, 255, 0.10); }
+:root[data-theme="dark"] .filter-modal-backdrop { background: rgba(0, 0, 0, 0.6); }
+:root[data-theme="dark"] .filter-modal-content { box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7); }
 
-/* Cards that use hardcoded #fff fall back to --white via this helper */
-:root[data-theme="dark"] .analytics-block { background: var(--white); }
+/* Navbar mirrors card treatment */
+:root[data-theme="dark"] .navbar {
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: saturate(1.2) blur(8px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
+}
+
+/* Search input — keep it visible on dark */
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background: var(--slate-50);
+  color: var(--slate-700);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color: var(--slate-500); opacity: 0.7; }
+
+/* Soften the bright-yellow VIP button so it stops blinding on dark */
+:root[data-theme="dark"] .btn-join-vip,
+:root[data-theme="dark"] .vip-join-btn {
+  filter: brightness(0.92) saturate(0.92);
+}
 
 /* ── Appearance (theme toggle) card ─────────────────────────────── */
 .appearance-card { margin-top: 1.25rem; }
