@@ -331,14 +331,18 @@
   // Apply any saved theme from state on boot (keeps runtime in sync with pre-paint script).
   try { applyTheme(store.getState().theme || 'light'); } catch (_) { /* ignore */ }
 
-  // Re-check theme eligibility after each auth/data refresh: if the user is
-  // not VIP, force theme back to 'light' (covers the boot case where dark
-  // was applied from localStorage before we knew VIP status).
+  // VIP-gate enforcement for theme. We must NOT revert theme on boot — the
+  // store starts with isVip:false until refreshData resolves the real flag,
+  // and reverting eagerly would wipe a legitimate VIP's dark-mode choice on
+  // every refresh. Instead, we only revert on an explicit VIP→non-VIP edge,
+  // after the first time isVip has been set to true in this session.
+  var _vipWasTrueOnce = false;
   store.subscribe(function (state) {
-    if (!state.isVip && (state.theme || 'light') !== 'light') {
+    if (state.isVip) { _vipWasTrueOnce = true; return; }
+    // Only act if the user *was* VIP earlier in this session and just lost it.
+    if (_vipWasTrueOnce && (state.theme || 'light') !== 'light') {
       try { localStorage.setItem('rs_theme', 'light'); } catch (_) { /* ignore */ }
       applyTheme('light');
-      // Defer to avoid setState-in-subscribe loops
       setTimeout(function () { store.setState({ theme: 'light' }); }, 0);
     }
   });
