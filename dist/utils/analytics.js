@@ -26,7 +26,7 @@
   var PREVVIEW_KEY = 'rs_pv';      // previous view name (session)
   var PREVPATH_KEY = 'rs_pp';      // previous path (session)
   var VIEW_TS_KEY  = 'rs_vts';     // timestamp when current view was entered
-  var ENDPOINT     = '/api/track';
+  var ENDPOINT     = (window.__API__ || '') + '/api/track';
 
   var _lastKey = null;        // de-dupe guard (same view within 1s)
   var _lastKeyTs = 0;

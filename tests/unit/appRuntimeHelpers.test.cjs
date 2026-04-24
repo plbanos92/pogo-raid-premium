@@ -137,11 +137,11 @@ test("refreshData keeps profile self-heal fallback helpers", () => {
 });
 
 test("api client keeps ensureMyProfile upsert helper", () => {
-  var apiSource = fs.readFileSync(path.resolve(__dirname, "../../src/api/supabaseApi.js"), "utf8");
+  var apiSource = fs.readFileSync(path.resolve(__dirname, "../../src/supabaseApi.js"), "utf8");
   assert.equal(
     /ensureMyProfile:\s*function\s*\(userId\)\s*\{/.test(apiSource),
     true,
-    "Missing ensureMyProfile API helper in src/api/supabaseApi.js"
+    "Missing ensureMyProfile API helper in src/supabaseApi.js"
   );
 
   assert.equal(

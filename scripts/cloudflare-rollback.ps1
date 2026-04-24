@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$VersionId,
-    [string]$WorkerName = "pogo-raid-premium"
+    [string]$DeploymentId,
+    [string]$ProjectName = "pogo-raid-premium"
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,10 +14,10 @@ function Invoke-Wrangler([string[]]$CommandArgs) {
     }
 }
 
-Write-Host "Rolling back worker '$WorkerName' to version '$VersionId'..." -ForegroundColor Cyan
-Invoke-Wrangler @("rollback", $VersionId)
+Write-Host "Rolling back Pages project '$ProjectName' to deployment '$DeploymentId'..." -ForegroundColor Cyan
+Invoke-Wrangler @("pages", "deployment", "rollback", $DeploymentId, "--project-name", $ProjectName)
 
 Write-Host "Verifying recent deployments..." -ForegroundColor Cyan
-Invoke-Wrangler @("deployments", "list", "--name", $WorkerName)
+Invoke-Wrangler @("pages", "deployment", "list", "--project-name", $ProjectName)
 
 Write-Host "Rollback completed." -ForegroundColor Green

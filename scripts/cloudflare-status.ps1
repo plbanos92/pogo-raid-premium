@@ -1,5 +1,5 @@
 param(
-    [string]$WorkerName = "pogo-raid-premium"
+    [string]$ProjectName = "pogo-raid-premium"
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,10 +15,10 @@ function Invoke-Wrangler([string[]]$CommandArgs) {
 Write-Host "Checking Cloudflare authentication..." -ForegroundColor Cyan
 Invoke-Wrangler @("whoami")
 
-Write-Host "Listing recent deployments for worker '$WorkerName'..." -ForegroundColor Cyan
-Invoke-Wrangler @("deployments", "list", "--name", $WorkerName)
+Write-Host "Listing Pages projects..." -ForegroundColor Cyan
+Invoke-Wrangler @("pages", "project", "list")
 
-Write-Host "Listing recent versions from current wrangler config..." -ForegroundColor Cyan
-Invoke-Wrangler @("versions", "list")
+Write-Host "Listing recent deployments for Pages project '$ProjectName'..." -ForegroundColor Cyan
+Invoke-Wrangler @("pages", "deployment", "list", "--project-name", $ProjectName)
 
-Write-Host "Cloudflare status check completed." -ForegroundColor Green
+Write-Host "Cloudflare Pages status check completed." -ForegroundColor Green

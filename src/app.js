@@ -251,7 +251,7 @@
   function subscribeToPushNotifications() {
     var token = store.getState().config.token;
     if (!token) return Promise.reject(new Error('Not authenticated'));
-    return fetch('/api/vapid-key', {
+    return fetch((window.__API__ || '') + '/api/vapid-key', {
       headers: { 'Authorization': 'Bearer ' + token }
     }).then(function(res) {
       if (!res.ok) {
@@ -271,7 +271,7 @@
       });
     }).then(function(subscription) {
       var keys = subscription.toJSON ? subscription.toJSON().keys : subscription.keys;
-      return fetch('/api/rest/v1/rpc/upsert_push_subscription', {
+      return fetch((window.__API__ || '') + '/api/rest/v1/rpc/upsert_push_subscription', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + token,
@@ -2625,7 +2625,7 @@
         SessionAudit.closeSessionKeepalive('page_close');
       }
       if (s.realtimeMode === 'realtime' && s.config && s.config.token) {
-        fetch('/api/rest/v1/rpc/release_realtime_slot', {
+        fetch((window.__API__ || '') + '/api/rest/v1/rpc/release_realtime_slot', {
           method: 'POST',
           headers: {
             'Authorization': 'Bearer ' + s.config.token,

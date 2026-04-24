@@ -1,5 +1,5 @@
 param(
-    [string]$WorkerName = "pogo-raid-premium",
+    [string]$ProjectName = "pogo-raid-premium",
     [switch]$SkipBuild,
     [switch]$SkipUnitTests,
     [switch]$DryRunOnly
@@ -40,19 +40,19 @@ if (-not $SkipBuild) {
 }
 
 if ($DryRunOnly) {
-    Invoke-Step "Dry-run worker deploy" {
-        Invoke-Wrangler @("deploy", "--dry-run")
+    Invoke-Step "Dry-run Pages deploy" {
+        Invoke-Wrangler @("pages", "deploy", "./dist", "--project-name", $ProjectName, "--dry-run")
     }
     Write-Host "Dry run completed. No production publish was performed." -ForegroundColor Yellow
     return
 }
 
-Invoke-Step "Deploy worker to Cloudflare" {
-    Invoke-Wrangler @("deploy")
+Invoke-Step "Deploy to Cloudflare Pages" {
+    Invoke-Wrangler @("pages", "deploy", "./dist", "--project-name", $ProjectName)
 }
 
 Invoke-Step "Verify deployment appears remotely" {
-    Invoke-Wrangler @("deployments", "list", "--name", $WorkerName)
+    Invoke-Wrangler @("pages", "deployment", "list", "--project-name", $ProjectName)
 }
 
 Write-Host "Deployment flow completed successfully." -ForegroundColor Green

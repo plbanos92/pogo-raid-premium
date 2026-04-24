@@ -1,38 +1,71 @@
+// Standalone API Worker — pogo-raid-premium-api
+// Handles all /api/* requests from the Pages frontend (and any future clients).
+// Secrets: SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, ANALYTICS_IP_SALT
+//   npx wrangler secret put <KEY>  (run from this api/ directory)
+
+const ALLOWED_ORIGINS = [
+  'https://pogo-raid-premium.pages.dev',
+  // Local dev — wrangler pages dev default ports
+  'http://localhost:8788',
+  'http://127.0.0.1:8788',
+  // Any preview deployment subdomain
+];
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // Allow Pages preview deployments: *.pogo-raid-premium.pages.dev
+  if (/^https:\/\/[a-f0-9]+\.pogo-raid-premium\.pages\.dev$/.test(origin)) return true;
+  return false;
+}
+
+function corsHeaders(origin) {
+  const allowed = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Prefer, apikey',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const origin = request.headers.get('Origin');
 
-    // Only proxy /api/* requests; everything else → static assets
-    if (!url.pathname.startsWith('/api/')) {
-      return env.ASSETS.fetch(request);
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
     if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-      console.error('[Worker] Missing SUPABASE_URL or SUPABASE_ANON_KEY — check Worker secrets');
+      console.error('[API] Missing SUPABASE_URL or SUPABASE_ANON_KEY — check Worker secrets');
       return Response.json(
         { error: 'Server not configured' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders(origin) }
       );
     }
 
-    // CSRF: reject cross-origin mutation requests
+    // CSRF: reject cross-origin mutations from disallowed origins
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      const origin = request.headers.get('Origin');
-      if (origin && origin !== url.origin) {
-        console.warn(`[Worker] CSRF rejected — origin: ${origin}`);
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      if (origin && !isAllowedOrigin(origin)) {
+        console.warn(`[API] CSRF rejected — origin: ${origin}`);
+        return Response.json({ error: 'Forbidden' }, { status: 403, headers: corsHeaders(origin) });
       }
     }
 
     if (url.pathname === '/api/realtime-config' && request.method === 'GET') {
       const auth = request.headers.get('Authorization');
       if (!auth || !auth.startsWith('Bearer ')) {
-        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        return Response.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders(origin) });
       }
       return Response.json(
         { url: env.SUPABASE_URL, anonKey: env.SUPABASE_ANON_KEY },
         {
           headers: {
+            ...corsHeaders(origin),
             'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff',
           },
@@ -43,15 +76,16 @@ export default {
     if (url.pathname === '/api/vapid-key' && request.method === 'GET') {
       const auth = request.headers.get('Authorization');
       if (!auth || !auth.startsWith('Bearer ')) {
-        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        return Response.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders(origin) });
       }
       if (!env.VAPID_PUBLIC_KEY) {
-        return Response.json({ error: 'Server not configured' }, { status: 500 });
+        return Response.json({ error: 'Server not configured' }, { status: 500, headers: corsHeaders(origin) });
       }
       return Response.json(
         { key: env.VAPID_PUBLIC_KEY },
         {
           headers: {
+            ...corsHeaders(origin),
             'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff',
           },
@@ -60,28 +94,22 @@ export default {
     }
 
     // ─── Analytics beacon ────────────────────────────────────────
-    // POST /api/track — same-origin beacon from the client that enriches the
-    // payload with Cloudflare geo data and a salted SHA-256 hash of the caller's
-    // IP (raw IP is NEVER stored). No auth required — the Supabase RLS policy
-    // on `page_views` allows anon INSERT, and a BEFORE INSERT trigger assigns
-    // user_id from auth.uid() when the caller is logged in.
     if (url.pathname === '/api/track' && request.method === 'POST') {
       try {
         const raw = await request.text();
         if (raw.length > 16384) {
-          return new Response('payload too large', { status: 413 });
+          return new Response('payload too large', { status: 413, headers: corsHeaders(origin) });
         }
         let payload;
         try {
           payload = raw ? JSON.parse(raw) : {};
         } catch {
-          return new Response('bad json', { status: 400 });
+          return new Response('bad json', { status: 400, headers: corsHeaders(origin) });
         }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-          return new Response('bad payload', { status: 400 });
+          return new Response('bad payload', { status: 400, headers: corsHeaders(origin) });
         }
 
-        // Hash the caller's IP (salted) so we never store raw IPs.
         const ip = request.headers.get('CF-Connecting-IP') || '';
         const salt = env.ANALYTICS_IP_SALT || 'raidsync-analytics-v1';
         let ipHash = null;
@@ -97,19 +125,11 @@ export default {
           }
         }
 
-        // Cloudflare-injected geo/network data (free on every request).
         const cf = request.cf || {};
 
-        // Whitelist + truncate user-supplied fields to defend against abuse.
         const s = (v, n) => (typeof v === 'string' ? v.slice(0, n) : null);
-        const i = (v) => {
-          const n = parseInt(v, 10);
-          return Number.isFinite(n) ? n : null;
-        };
-        const f = (v) => {
-          const n = typeof v === 'number' ? v : parseFloat(v);
-          return Number.isFinite(n) ? n : null;
-        };
+        const i = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+        const f = (v) => { const n = typeof v === 'number' ? v : parseFloat(v); return Number.isFinite(n) ? n : null; };
         const b = (v) => (typeof v === 'boolean' ? v : null);
 
         const row = {
@@ -178,7 +198,6 @@ export default {
           dcl_ms:           i(payload.dcl_ms),
           fp_ms:            i(payload.fp_ms),
           fcp_ms:           i(payload.fcp_ms),
-          // Server-side enrichment
           ip_hash:          ipHash,
           country:          s(cf.country, 2),
           region:           s(cf.region, 64),
@@ -198,7 +217,6 @@ export default {
           extra:            payload.extra && typeof payload.extra === 'object' ? payload.extra : null,
         };
 
-        // Forward the JWT if present so the INSERT trigger can capture user_id.
         const headers = new Headers();
         headers.set('apikey', env.SUPABASE_ANON_KEY);
         headers.set('Content-Type', 'application/json');
@@ -215,13 +233,13 @@ export default {
 
         if (!resp.ok) {
           const body = await resp.text();
-          console.warn('[Worker] /api/track insert failed:', resp.status, body.slice(0, 200));
-          return new Response('', { status: resp.status });
+          console.warn('[API] /api/track insert failed:', resp.status, body.slice(0, 200));
+          return new Response('', { status: resp.status, headers: corsHeaders(origin) });
         }
-        return new Response('', { status: 204 });
+        return new Response('', { status: 204, headers: corsHeaders(origin) });
       } catch (err) {
-        console.error('[Worker] /api/track error:', err && err.message);
-        return new Response('', { status: 204 }); // never let tracking errors break the page
+        console.error('[API] /api/track error:', err && err.message);
+        return new Response('', { status: 204, headers: corsHeaders(origin) }); // never let tracking errors break the page
       }
     }
 
@@ -230,15 +248,13 @@ export default {
 
     // Allow only Supabase auth and REST paths to prevent SSRF
     if (!supabasePath.startsWith('/auth/v1/') && !supabasePath.startsWith('/rest/v1/')) {
-      console.warn(`[Worker] SSRF blocked — disallowed path: ${supabasePath}`);
-      return Response.json({ error: 'Not found' }, { status: 404 });
+      console.warn(`[API] SSRF blocked — disallowed path: ${supabasePath}`);
+      return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders(origin) });
     }
 
-    // Build target URL (never expose SUPABASE_URL to the client)
     const target = env.SUPABASE_URL + supabasePath + url.search;
-    console.log(`[Worker] ${request.method} ${url.pathname}${url.search ? url.search.slice(0, 80) : ''}`);
+    console.log(`[API] ${request.method} ${url.pathname}${url.search ? url.search.slice(0, 80) : ''}`);
 
-    // Forward only the headers Supabase needs
     const headers = new Headers();
     headers.set('apikey', env.SUPABASE_ANON_KEY);
     headers.set('Content-Type', 'application/json');
@@ -255,10 +271,9 @@ export default {
       body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
     });
 
-    console.log(`[Worker] ← ${response.status} ${response.statusText} (${supabasePath})`);
+    console.log(`[API] ← ${response.status} ${response.statusText} (${supabasePath})`);
 
-    // Return response with security headers
-    const resHeaders = new Headers();
+    const resHeaders = new Headers(corsHeaders(origin));
     resHeaders.set('Content-Type', response.headers.get('Content-Type') || 'application/json');
     resHeaders.set('Cache-Control', 'no-store');
     resHeaders.set('X-Content-Type-Options', 'nosniff');

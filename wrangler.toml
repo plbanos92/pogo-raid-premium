@@ -1,8 +1,3 @@
-account_id = "40fa129038c8d86d0bfb504489b3c587"
 name = "pogo-raid-premium"
-main = "worker.js"
+pages_build_output_dir = "./dist"
 compatibility_date = "2026-03-11"
-
-[assets]
-directory = "./dist"
-binding = "ASSETS"

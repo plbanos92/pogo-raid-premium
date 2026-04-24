@@ -31,7 +31,7 @@
         headers.Authorization = "Bearer " + config.token;
       }
 
-      return fetch("/api" + path, {
+      return fetch((window.__API__ || '') + "/api" + path, {
         method: opts.method || "GET",
         headers: headers,
         body: typeof opts.body === "undefined" ? undefined : JSON.stringify(opts.body)
@@ -48,7 +48,7 @@
         headers.Authorization = "Bearer " + config.token;
       }
 
-      return fetch("/api" + path, {
+      return fetch((window.__API__ || '') + "/api" + path, {
         method: opts.method || "GET",
         headers: headers,
         body: typeof opts.body === "undefined" ? undefined : JSON.stringify(opts.body),
@@ -334,7 +334,7 @@
         return request("/rest/v1/app_config?id=eq.1&select=host_capacity_free,host_capacity_vip,vip_price,vip_price_period,invite_window_seconds,host_inactivity_seconds,vip_features,realtime_slots,audit_config,egg_hatch_default_minutes&limit=1");
       },
       getRealtimeConfig: function () {
-        return fetch('/api/realtime-config', {
+        return fetch((window.__API__ || '') + '/api/realtime-config', {
           headers: { Authorization: 'Bearer ' + (config.token || '') }
         }).then(function (res) {
           if (!res.ok) throw new Error('getRealtimeConfig HTTP ' + res.status);

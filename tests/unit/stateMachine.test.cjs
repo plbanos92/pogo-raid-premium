@@ -22,7 +22,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const appSource = fs.readFileSync(path.resolve(__dirname, "../../src/app.js"), "utf8");
-const apiSource = fs.readFileSync(path.resolve(__dirname, "../../src/api/supabaseApi.js"), "utf8");
+const apiSource = fs.readFileSync(path.resolve(__dirname, "../../src/supabaseApi.js"), "utf8");
 
 function hasFunctionDeclaration(source, name) {
   return new RegExp("\\bfunction\\s+" + name + "\\s*\\(").test(source);

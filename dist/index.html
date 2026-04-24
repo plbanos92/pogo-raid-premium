@@ -10,6 +10,14 @@
   <link rel="stylesheet" href="assets/styles.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <script>
+    // API base URL — empty on localhost (Pages Function proxy), Worker URL on production.
+    window.__API__ = (function () {
+      var h = window.location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1') return '';
+      return 'https://pogo-raid-premium-api.plbanos92.workers.dev';
+    })();
+  </script>
+  <script>
     // Apply saved theme before first paint to avoid FOUC.
     // Dark mode is VIP-gated but applied eagerly here; app.js reverts
     // non-VIPs to 'light' after auth resolves.
@@ -264,7 +272,7 @@
   <script src="utils/predicates.js"></script>
   <script src="utils/realtimeUtils.js"></script>
   <script src="state/store.js"></script>
-  <script src="api/supabaseApi.js"></script>
+  <script src="supabaseApi.js"></script>
   <script src="utils/sessionAudit.js"></script>
   <script src="utils/analytics.js"></script>
   <script src="views/homeView.js"></script>
