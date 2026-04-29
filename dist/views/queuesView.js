@@ -366,7 +366,10 @@
         }
 
         // ── Egg lobby — waiting to hatch ─────────────────────────────────
-        if (h.status === 'egg') {
+        // Route through QueueFSM.getLobbyState so any future change to the egg/hatch
+        // semantics flows through the state machine instead of via raw status string checks.
+        var _lobbyState = deps.QueueFSM.getLobbyState(h.id, [h]);
+        if (_lobbyState === deps.QueueFSM.LOBBY_STATE.WAITING_HATCH) {
           var ep = [];
           var hatchTimeMs = h.hatch_time ? new Date(h.hatch_time).getTime() : 0;
           var preInviteMs = hatchTimeMs ? (hatchTimeMs - 2 * 60 * 1000) : 0;
@@ -442,7 +445,7 @@
         }
 
         var lqWithFc = lq.filter(function (entry) {
-          return !!entry.friend_code && entry.status !== 'done' && !deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal;
+          return !!entry.friend_code && !deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal;
         });
         if (lqWithFc.length > 0) {
           var anyQrOpen = lqWithFc.some(function (entry) { return !!(state.openLobbyQrs || {})[entry.id]; });
@@ -458,7 +461,7 @@
 
         lp.push('  <div class="lobby-queue-list">');
         lq.forEach(function (entry) {
-          if (entry.status === 'done' || deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal) return;
+          if (deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal) return;
           var name = getTrainerDisplayName(entry);
           var initial = name.charAt(0).toUpperCase();
           var qrOpen = !!((state.openLobbyQrs || {})[entry.id]);

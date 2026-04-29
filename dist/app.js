@@ -410,6 +410,12 @@
       SessionAudit.track('realtime_debug', 'realtime.slot_claimed', { granted: !!result.granted }, false);
       if (result.granted) {
         var userId = store.getState().config.userId;
+        // FSM transition BEFORE WS connect so any inbound CHANNEL_ERROR fired during
+        // subscription is accepted by the demotion guard (which requires AUTHENTICATED_REALTIME).
+        // Guard with can() in case caller is already in REALTIME (e.g. retry path).
+        if (sessionMachine.can(SessionFSM.SESSION_STATE.AUTHENTICATED_REALTIME)) {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_REALTIME);
+        }
         global.AppRealtime.connect(
           config.url,
           config.anonKey,
@@ -417,7 +423,8 @@
           userId
         );
         store.setState({ realtimeMode: 'realtime', realtimeRetrying: false });
-        sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_REALTIME);
+        // Reset retry counter on natural success so future demotions get the full retry budget.
+        _realtimeRetryCount = 0;
         SessionAudit.track('realtime', 'realtime.connected', {}, false);
         // Keep slot count fresh: main poll is throttled to IDLE_MS in realtime mode,
         // so other users claiming/releasing slots would otherwise take up to 20s to reflect.
@@ -431,13 +438,19 @@
         // evicts this active session. Also proves liveness to get_realtime_slot_stats cleanup.
         // Guard: if realtimeMode was cleared (e.g. sign-out without teardown in old tab),
         // the interval self-terminates so a stale JWT can't keep a phantom session alive.
+        // If the server returns granted=false (slot revoked / stolen), trigger demotion
+        // immediately rather than waiting for the WS to die.
         _heartbeatTimer = setInterval(function () {
           if (store.getState().realtimeMode !== 'realtime') {
             clearInterval(_heartbeatTimer);
             _heartbeatTimer = null;
             return;
           }
-          api.claimRealtimeSlot().catch(function () {});
+          api.claimRealtimeSlot().then(function (res) {
+            if (!res || !res.granted) {
+              handleRealtimeDemotion('heartbeat', 'slot_lost');
+            }
+          }).catch(function () {});
         }, 90 * 1000);
       }
     } catch (e) {
@@ -462,7 +475,15 @@
     global.AppRealtime.disconnect();
     try { await api.releaseRealtimeSlot(); } catch (e) { /* best-effort */ }
     store.setState({ realtimeMode: 'polling', realtimeRetrying: false });
-    sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+    // Only flip the FSM to polling if we're coming from an active realtime/recovery state.
+    // In terminal states (unauthenticated, signing_out, session_expired) the caller owns
+    // the FSM — teardown must not resurrect the session by transitioning back to polling.
+    var _fsmState = sessionMachine.getState();
+    if (_fsmState === SessionFSM.SESSION_STATE.AUTHENTICATED_REALTIME ||
+        _fsmState === SessionFSM.SESSION_STATE.DEMOTION_IN_FLIGHT ||
+        _fsmState === SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT) {
+      sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+    }
     SessionAudit.track('realtime', 'realtime.disconnected', {}, false);
   }
 
@@ -1011,7 +1032,7 @@
   var _slotStatsPollTimer = null;
   var _heartbeatTimer = null;
   var _hiddenAt = null;             // timestamp when tab became hidden
-  var _recoveryWatchdog = null;     // safety: reset _recoveryInFlight if teardown hangs (no-network)
+  var _recoveryWatchdog = null;     // safety: forces FSM out of recovery_in_flight if teardown hangs (no-network)
   var _realtimeRetryTimer = null;   // backoff retry after transient CHANNEL_ERROR / TIMED_OUT
   var _realtimeRetryCount = 0;      // attempts since last successful connection (cap: 3)
   var STALE_THRESHOLD_MS = 30000;   // ms hidden before WS is considered dead; matches iOS Safari kill window
@@ -1215,9 +1236,7 @@
   function initAccountActions() {
     var wrap = qs("accountContent");
 
-    wrap.addEventListener("click", function (e) {
-      // Edit profile button → enter edit mode
-      if (e.target.closest("#editProfileBtn")) {
+    wrap.addEventListener("click", async function (e) {
         profileEditMode = true;
         formPersist.save('app', 'profileEditMode', 'true');
         renderAccountView(store.getState());
@@ -1310,7 +1329,7 @@
       var target = e.target.closest("#signOutBtn");
       if (target) {
         sessionMachine.transition(SessionFSM.SESSION_STATE.SIGNING_OUT);
-        SessionAudit.track('session', 'session.closed', { reason: 'sign_out' }, true);
+        SessionAudit.track('session', 'session.closing', { reason: 'sign_out' }, true);
         // Leave active queues on sign-out (fire-and-forget).
         // Capture api now — token is still valid, store still populated.
         // 'raiding' excluded: player is in Pokémon GO, web UI Leave button also excludes it.
@@ -1328,12 +1347,14 @@
             }
           });
         }
-        SessionAudit.closeSession('sign_out');
 
         // Tear down realtime BEFORE clearing the token — releaseRealtimeSlot needs a valid JWT.
-        // Capture api now while the token is still in the store.
+        // Awaited so the audit order is realtime.disconnected → session.closed.
         _realtimeRetryCount = 0;
-        teardownRealtimeMode(getApi());
+        try { await teardownRealtimeMode(_signOutApi); } catch (e2) { /* best-effort */ }
+
+        SessionAudit.track('session', 'session.closed', { reason: 'sign_out' }, true);
+        SessionAudit.closeSession('sign_out');
         var _signOutUserId = store.getState().config.userId; // capture before clearSession wipes it
         global.AppConfig.clearSession();
         formPersist.clearAll();
@@ -1489,7 +1510,9 @@
         switchView(QueueFSM.VIEW_KEY.HOME);
         refreshData().then(function () {
           if (store.getState().realtimeMode === 'polling') {
-            sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+            if (sessionMachine.can(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING)) {
+              sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+            }
             initRealtimeMode(getApi());
           }
         });
@@ -2449,7 +2472,9 @@
       switchView(QueueFSM.VIEW_KEY.HOME);
       refreshData().then(function () {
         if (store.getState().realtimeMode === 'polling') {
-          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+          if (sessionMachine.can(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING)) {
+            sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+          }
           initRealtimeMode(getApi());
         }
       });
@@ -2529,7 +2554,8 @@
     // Re-check realtime eligibility when the page is restored from bfcache (back/forward nav).
     // DOMContentLoaded / init() do NOT re-run in that case, so the old WS is dead and
     // the store may still have realtimeMode:'realtime' (stale) or 'polling' (never upgraded).
-    // _recoveryInFlight guards against double-execution when visibilitychange fires first.
+    // The sessionMachine.can(RECOVERY_IN_FLIGHT) check guards against double-execution
+    // when visibilitychange fires first — if we're already in recovery_in_flight, can() is false.
     window.addEventListener('pageshow', function (e) {
       if (!e.persisted) return; // not a bfcache restore — normal load handled by init()
       // Anonymous browsers have no realtime slot to recover, but still refresh data on
@@ -2556,6 +2582,12 @@
         }).then(function () {
           SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
         }).catch(function () {}).then(function () {
+          // Eager FSM reset: don't wait for the watchdog if we got here cleanly.
+          // Covers the case where initRealtimeMode returned granted=false and never
+          // transitioned the FSM out of RECOVERY_IN_FLIGHT.
+          if (sessionMachine.is(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) {
+            sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+          }
           clearTimeout(_recoveryWatchdog);
           _recoveryWatchdog = null;
         });
@@ -2566,6 +2598,9 @@
         }).then(function () {
           SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
         }).catch(function () {}).then(function () {
+          if (sessionMachine.is(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) {
+            sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+          }
           clearTimeout(_recoveryWatchdog);
           _recoveryWatchdog = null;
         });
@@ -2575,7 +2610,7 @@
     // Recover realtime mode when user returns from another app (app-switch / screen lock).
     // On mobile the OS kills the WebSocket after ~30 s of inactivity. visibilitychange fires
     // on app-switch; pageshow fires on bfcache restore — they are separate recovery paths.
-    // _hiddenAt tracks hidden duration; _recoveryInFlight prevents double-execution when
+    // _hiddenAt tracks hidden duration; the FSM (RECOVERY_IN_FLIGHT state) prevents double-execution when
     // bfcache restore triggers both events (visibilitychange first, then pageshow).
     // _recoveryWatchdog guarantees flag reset even if teardown hangs on a dead network.
     document.addEventListener('visibilitychange', function () {
@@ -2612,6 +2647,10 @@
       }).then(function () {
         SessionAudit.track('lifecycle', 'lifecycle.recovery_complete', { mode: store.getState().realtimeMode }, true);
       }).catch(function () {}).then(function () {
+        // Eager FSM reset (mirrors bfcache pageshow handler).
+        if (sessionMachine.is(SessionFSM.SESSION_STATE.RECOVERY_IN_FLIGHT)) {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+        }
         clearTimeout(_recoveryWatchdog);
         _recoveryWatchdog = null;
       });
@@ -2767,7 +2806,9 @@
     // Start the adaptive poll cycle after initial data load
     refreshData().then(function () {
       if (isAuthed()) {
-        sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+        if (sessionMachine.can(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING)) {
+          sessionMachine.transition(SessionFSM.SESSION_STATE.AUTHENTICATED_POLLING);
+        }
         initRealtimeMode(getApi());
       }
       if (isAuthed()) {

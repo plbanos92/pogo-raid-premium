@@ -27,10 +27,13 @@
 
   // ── Valid transitions ─────────────────────────────────────────────────────
 
+  // Note: graceful realtime→polling demotion (no transient state) is supported
+  // for cases where we tear down realtime without going through demotion_in_flight
+  // (e.g. recovery flows that already cleaned up timers).
   var VALID_SESSION_TRANSITIONS = Object.freeze({
     unauthenticated:        ['authenticated_polling'],
     authenticated_polling:  ['authenticated_realtime', 'recovery_in_flight', 'signing_out', 'session_expired'],
-    authenticated_realtime: ['demotion_in_flight', 'recovery_in_flight', 'signing_out', 'session_expired'],
+    authenticated_realtime: ['authenticated_polling', 'demotion_in_flight', 'recovery_in_flight', 'signing_out', 'session_expired'],
     demotion_in_flight:     ['authenticated_polling', 'session_expired'],
     recovery_in_flight:     ['authenticated_polling', 'authenticated_realtime', 'session_expired'],
     signing_out:            ['unauthenticated'],

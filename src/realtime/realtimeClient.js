@@ -114,6 +114,22 @@
         function () { scheduleRealtimeRefresh(); }
       ).subscribe(_channelSubscribeTrackOnly('boss-meta-changes'));
       this._channels.push(bossMetaCh);
+
+      // Runtime invariant: Channel 5 (boss-meta-changes / raid_bosses relay) must remain
+      // at index 4. The relay is load-bearing for non-owner boss-counter delivery; if a
+      // future refactor reorders channels, this assert surfaces the mistake immediately
+      // instead of letting boss cards silently go stale in production.
+      if (this._channels.length !== 5 ||
+          !this._channels[4] ||
+          this._channels[4].topic !== 'realtime:boss-meta-changes') {
+        var actualTopic = this._channels[4] && this._channels[4].topic;
+        console.error('[AppRealtime] Channel layout invariant violated: expected boss-meta-changes at index 4, got', actualTopic, 'channels=', this._channels.length);
+        _trackDebug('realtime.channel_layout_violation', {
+          expected: 'realtime:boss-meta-changes',
+          actual: actualTopic || null,
+          length: this._channels.length
+        });
+      }
     },
 
     disconnect: function () {

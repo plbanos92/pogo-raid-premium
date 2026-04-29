@@ -40,11 +40,12 @@
   });
 
   var LOBBY_STATE = Object.freeze({
-    IDLE:         'idle',
-    OPEN_WAITING: 'open_waiting',
-    LOBBY_READY:  'lobby_ready',
-    RAIDING:      'raiding',
-    FINISHED:     'finished'
+    IDLE:          'idle',
+    WAITING_HATCH: 'waiting_hatch',
+    OPEN_WAITING:  'open_waiting',
+    LOBBY_READY:   'lobby_ready',
+    RAIDING:       'raiding',
+    FINISHED:      'finished'
   });
 
   var JOINER_STATE = Object.freeze({
@@ -107,7 +108,7 @@
     invited:   { cssClass: 'status-invited',   label: 'Invited',              iconName: null,    isLeavable: true,  isTerminal: false, isActionable: true  },
     confirmed: { cssClass: 'status-confirmed', label: 'Friend Request Sent',  iconName: 'check', isLeavable: true,  isTerminal: false, isActionable: true  },
     raiding:   { cssClass: 'status-raiding',   label: 'Raiding',              iconName: null,    isLeavable: false, isTerminal: false, isActionable: false },
-    done:      { cssClass: 'status-done',      label: 'Done',                 iconName: 'check', isLeavable: false, isTerminal: false, isActionable: false },
+    done:      { cssClass: 'status-done',      label: 'Done',                 iconName: 'check', isLeavable: false, isTerminal: true,  isActionable: false },
     left:      { cssClass: 'status-left',      label: 'Left',                 iconName: null,    isLeavable: false, isTerminal: true,  isActionable: false },
     cancelled: { cssClass: 'status-cancelled', label: 'Cancelled',            iconName: null,    isLeavable: false, isTerminal: true,  isActionable: false }
   };
@@ -186,6 +187,7 @@
     var host = (hosts || []).filter(function (h) { return h.id === managingLobby; })[0];
     if (!host) return LOBBY_STATE.IDLE;
     var s = host.status;
+    if (s === 'egg')                         return LOBBY_STATE.WAITING_HATCH;
     if (s === 'open')                        return LOBBY_STATE.OPEN_WAITING;
     if (s === 'lobby')                       return LOBBY_STATE.LOBBY_READY;
     if (s === 'raiding')                     return LOBBY_STATE.RAIDING;

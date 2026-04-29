@@ -75,7 +75,7 @@ test('getQueueStatusMeta — done', () => {
   const m = QueueFSM.getQueueStatusMeta('done');
   assert.equal(m.cssClass, 'status-done');
   assert.equal(m.isLeavable, false);
-  assert.equal(m.isTerminal, false);
+  assert.equal(m.isTerminal, true);
   assert.equal(m.isActionable, false);
 });
 
