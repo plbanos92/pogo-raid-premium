@@ -3448,6 +3448,21 @@ a { text-decoration: none; color: inherit; }
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
 }
 
+/* VIP nav pill (subscribed) on dark — translucent amber glow instead of cream */
+:root[data-theme="dark"] .nav-link-vip.vip-subscribed {
+  color: var(--amber-300);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.18);
+}
+:root[data-theme="dark"] .nav-link-vip.vip-subscribed:hover {
+  background: rgba(251, 191, 36, 0.20);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+:root[data-theme="dark"] .nav-link-vip.highlight:not(.active) {
+  color: var(--amber-300);
+}
+
 /* ── Dark-mode pill glow amplification ─────────────────────────
    Uses a ::after pseudo-element that animates ONLY opacity for a
    buttery-smooth GPU-compositor pulse (no shadow-redraw jank). */
