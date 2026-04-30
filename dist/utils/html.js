@@ -137,7 +137,9 @@
 
   function getBossDisplayImage(boss) {
     var pokemonId = Number(boss && boss.pokemon_id);
-    if (CURRENT_BOSS_SILHOUETTES[pokemonId]) return CURRENT_BOSS_SILHOUETTES[pokemonId];
+    if (pokemonId && CURRENT_BOSS_SILHOUETTES[pokemonId]) {
+      return CURRENT_BOSS_SILHOUETTES[pokemonId];
+    }
     if (boss && boss.image_url) return boss.image_url;
     var text = encodeURIComponent(((boss && boss.name) || "Boss").slice(0, 20));
     return "https://placehold.co/300x300?text=" + text;

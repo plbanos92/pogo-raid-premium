@@ -190,10 +190,12 @@
       }
 
       // ── Appearance (theme) section ──
+      // Dark mode unlocks via VIP subscription OR the one-time dark_unlock entitlement.
       var currentTheme = state.theme || 'light';
+      var hasDarkAccess = !!(state.isVip || state.hasDarkUnlock);
       html.push('<div class="account-card appearance-card">');
       html.push('  <div class="section-header">' + icon("moon", 20) + ' Appearance</div>');
-      if (state.isVip) {
+      if (hasDarkAccess) {
         html.push('  <div class="appearance-segment" role="tablist" aria-label="Theme">');
         html.push('    <button type="button" class="appearance-seg-btn' + (currentTheme === 'light' ? ' active' : '') + '" data-theme-btn="light" role="tab" aria-selected="' + (currentTheme === 'light') + '">' + icon("sun", 16) + ' Light</button>');
         html.push('    <button type="button" class="appearance-seg-btn' + (currentTheme === 'dark' ? ' active' : '') + '" data-theme-btn="dark" role="tab" aria-selected="' + (currentTheme === 'dark') + '">' + icon("moon", 16) + ' Dark</button>');
@@ -203,9 +205,9 @@
       } else {
         html.push('  <div class="appearance-locked">');
         html.push('    <div class="appearance-lock-icon">' + icon("crown", 22) + '</div>');
-        html.push('    <p class="appearance-lock-title">Dark mode is a VIP perk</p>');
-        html.push('    <p class="appearance-lock-sub">Upgrade to VIP to unlock a darker look that\u2019s easier on the eyes at night.</p>');
-        html.push('    <button type="button" class="appearance-lock-cta" data-view="vip">' + icon("crown", 14) + ' Upgrade to VIP</button>');
+        html.push('    <p class="appearance-lock-title">Dark mode is locked</p>');
+        html.push('    <p class="appearance-lock-sub">Upgrade to VIP or grab the one-time Dark Mode unlock to enable a darker look that\u2019s easier on the eyes at night.</p>');
+        html.push('    <button type="button" class="appearance-lock-cta" data-view="vip">' + icon("crown", 14) + ' Get Dark Mode</button>');
         html.push('  </div>');
       }
       html.push('</div>');

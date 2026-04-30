@@ -54,6 +54,7 @@
     var escapeHtml = deps.escapeHtml;
     var getTrainerDisplayName = deps.getTrainerDisplayName;
     var renderTrainerMeta = deps.renderTrainerMeta;
+    var capacity = parseInt(deps.capacity, 10) || 5;
 
     var validStatuses = ['queued', 'invited', 'confirmed', 'raiding', 'done'];
     var meEntry = (snapshotData || []).find(function (entry) {
@@ -64,19 +65,28 @@
     });
     var html = [];
 
-    // Hide the entire "Your Team" block when the user is alone in the lobby —
-    // it just restates information already shown by the top invite banner and
-    // adds another nested box. The block reappears as soon as a teammate joins.
-    if (!teammates.length) return '';
+    // Always render the lobby roster for invited/confirmed/raiding/done so the
+    // joiner sees the same lobby members the host sees. The list updates as
+    // teammates are invited / confirm / etc. on each refresh poll.
+    var allEntries = [];
+    if (meEntry) allEntries.push(meEntry);
+    teammates.forEach(function (e) { allEntries.push(e); });
+    if (!allEntries.length) return '';
+
+    var confirmedCount = allEntries.filter(function (e) { return e.status === 'confirmed' || e.status === 'raiding' || e.status === 'done'; }).length;
+    var slotDots = '';
+    for (var si = 0; si < capacity; si++) {
+      slotDots += '<span class="lobby-slot' + (si < confirmedCount ? ' filled' : '') + '"></span>';
+    }
 
     html.push('<div class="queue-teammates">');
-    html.push('  <div class="queue-teammates-header">' + icon('users', 16) + ' Your Team</div>');
-
-    if (!meEntry && !teammates.length) {
-      html.push('  <p class="queue-teammates-empty">No teammates are visible in this lobby yet.</p>');
-      html.push('</div>');
-      return html.join('\n');
-    }
+    html.push('  <div class="queue-teammates-header">');
+    html.push('    <span class="queue-teammates-title">' + icon('users', 16) + ' Lobby Members</span>');
+    html.push('    <span class="queue-teammates-slots">');
+    html.push('      <span class="lobby-slots">' + slotDots + '</span>');
+    html.push('      <span class="lobby-slots-count">' + confirmedCount + ' / ' + capacity + ' confirmed</span>');
+    html.push('    </span>');
+    html.push('  </div>');
 
     html.push('  <div class="queue-teammate-list">');
 
@@ -87,7 +97,7 @@
       html.push('      <div class="lobby-avatar is-me">You</div>');
       html.push('      <div class="queue-teammate-info">');
       html.push('        <div class="queue-teammate-top">');
-      html.push('          <div class="lobby-entry-name">You</div>');
+      html.push('          <div class="lobby-entry-name">You' + (meEntry.is_vip ? ' ' + icon('crown', 12) : '') + '</div>');
       html.push('          <span class="status-pill ' + meStatusClass + '">' + meStatusLabel + '</span>');
       html.push('        </div>');
       html.push(renderTrainerMeta(meEntry.team, meEntry.trainer_level, 'trainer-meta-row'));
@@ -104,7 +114,7 @@
       html.push('      <div class="lobby-avatar">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>');
       html.push('      <div class="queue-teammate-info">');
       html.push('        <div class="queue-teammate-top">');
-      html.push('          <div class="lobby-entry-name">' + escapeHtml(name) + '</div>');
+      html.push('          <div class="lobby-entry-name">' + escapeHtml(name) + (entry.is_vip ? ' ' + icon('crown', 12) : '') + '</div>');
       html.push('          <span class="status-pill ' + statusClass + '">' + statusLabel + '</span>');
       html.push('        </div>');
       html.push(renderTrainerMeta(entry.team, entry.trainer_level, 'trainer-meta-row'));
@@ -296,7 +306,7 @@
         '</span>';
 
       html.push('<section style="margin-bottom:2rem">');
-      html.push('  <h2 class="section-title">Hosted Lobbies <span class="section-count teal">' + hosts.length + ' Active</span>' + hostSyncPill + '</h2>');
+      html.push('  <h2 class="section-title"><span class="section-title-text">Hosted Lobbies</span><span class="section-meta"><span class="section-count teal">' + hosts.length + ' Active</span>' + hostSyncPill + '</span></h2>');
       html.push('  <div class="hosts-list">');
 
       hosts.forEach(function (h) {
@@ -420,9 +430,11 @@
 
         lp.push('<div class="lobby-panel">');
         lp.push('  <div class="lobby-panel-header">');
+        lp.push('    <img class="lobby-panel-boss" src="' + escapeHtml(getBossDisplayImage(rb || { name: bossName })) + '" alt="' + escapeHtml(bossName) + '">');
         lp.push('    <div class="lobby-panel-title-group">');
         lp.push('      <h3 class="lobby-panel-title">' + escapeHtml(bossName) + '</h3>');
         lp.push('      <div class="lobby-slots-wrap">');
+        lp.push('        <span class="role-tag role-host">' + icon('crown', 11) + ' Hosting</span>');
         lp.push('        <span class="lobby-id-tag">Lobby #' + escapeHtml(String(h.id).slice(0, 8).toUpperCase()) + '</span>');
         lp.push('        <div class="lobby-slots">' + slotDots + '</div>');
         lp.push('        <span class="lobby-slots-count">' + confirmedCount + ' / ' + cap + ' confirmed</span>');
@@ -431,32 +443,34 @@
         lp.push('    <button class="lobby-info-btn" type="button" data-toggle-lobby-info="' + escapeHtml(h.id) + '" aria-label="Queue info" aria-expanded="' + infoOpen + '" aria-controls="lobby-info-' + escapeHtml(h.id) + '" title="Queue info">' + icon('info', 16) + '</button>');
         lp.push('  </div>');
 
-        lp.push('  <div class="lobby-host-strip">');
-        lp.push('    <img class="lobby-host-img-sm" src="' + escapeHtml(getBossDisplayImage(rb || { name: bossName })) + '" alt="' + escapeHtml(bossName) + '">');
-        lp.push('    <div class="lobby-host-info">');
-        lp.push('      <span class="lobby-host-name">' + icon('user', 13) + ' ' + escapeHtml(hostName) + '</span>');
-        lp.push(renderTrainerMeta(hostTeam, hostLevel, 'trainer-meta-row'));
-        lp.push('      <p class="lobby-fc-line">Code: <span class="code-inline">' + escapeHtml(h.friend_code || 'Not set') + '</span></p>');
-        lp.push('    </div>');
-        lp.push('  </div>');
-
         if (infoOpen) {
           lp.push('  <p class="lobby-auto-fill-note" id="lobby-info-' + escapeHtml(h.id) + '">Players are added to this lobby automatically from the queue. Start once enough players have confirmed.</p>');
         }
+
+        if (inactSecs > 0 && confirmedCount >= 1) {
+          var remaining = Math.max(0, hostInactivitySeconds - inactSecs);
+          lp.push('  <div class="lobby-inactivity-strip">' + icon('alert', 14) + '<span>Lobby closes in <span class="countdown" data-inactivity-start="' + escapeHtml(h.last_host_action_at || '') + '" data-inactivity-timeout="' + hostInactivitySeconds + '">' + remaining + 's</span> if you don\u2019t act.</span></div>');
+        }
+
+        // Host's own info card — clearly framed as "your" details so the host
+        // sees their own friend code prominently (joiners need to add it).
+        lp.push('  <div class="lobby-host-card">');
+        lp.push('    <div class="lobby-host-card-row">');
+        lp.push('      <span class="lobby-host-name">' + icon('user', 13) + ' ' + escapeHtml(hostName) + '</span>');
+        lp.push(renderTrainerMeta(hostTeam, hostLevel, 'trainer-meta-row'));
+        lp.push('    </div>');
+        lp.push('    <div class="lobby-host-code-row">');
+        lp.push('      <span class="lobby-host-code-label">Your code</span>');
+        lp.push('      <span class="code-inline">' + escapeHtml(h.friend_code ? formatFriendCode(h.friend_code) : 'Not set') + '</span>');
+        lp.push('    </div>');
+        lp.push('  </div>');
 
         var lqWithFc = lq.filter(function (entry) {
           return !!entry.friend_code && !deps.QueueFSM.getQueueStatusMeta(entry.status).isTerminal;
         });
         if (lqWithFc.length > 0) {
           var anyQrOpen = lqWithFc.some(function (entry) { return !!(state.openLobbyQrs || {})[entry.id]; });
-          lp.push('  <div class="lobby-actions">');
-          lp.push('    <button class="lobby-action-btn" style="background:var(--slate-100);color:var(--slate-700)" data-toggle-all-lobby-qrs="1" type="button">' + icon('qrCode', 14) + ' ' + (anyQrOpen ? 'Hide all QRs' : 'Show all QRs') + '</button>');
-          lp.push('  </div>');
-        }
-
-        if (inactSecs > 0 && confirmedCount >= 1) {
-          var remaining = Math.max(0, hostInactivitySeconds - inactSecs);
-          lp.push('  <div class="alert-warning">' + icon('alert', 16) + ' <div><strong>Inactivity warning</strong><p>Lobby will close in <span class="countdown" data-inactivity-start="' + escapeHtml(h.last_host_action_at || '') + '" data-inactivity-timeout="' + hostInactivitySeconds + '">' + remaining + 's</span> if you don’t act.</p></div></div>');
+          lp.push('  <button class="lobby-show-all-btn" data-toggle-all-lobby-qrs="1" type="button">' + icon('qrCode', 14) + ' ' + (anyQrOpen ? 'Hide joiner QRs' : 'Show joiner QRs') + '</button>');
         }
 
         lp.push('  <div class="lobby-queue-list">');
@@ -540,7 +554,7 @@
       var isVipRetrying = isVipLive && !!state.realtimeRetrying;
       var pillMode = (state.realtimeMode === 'realtime' || isVipRetrying) ? 'realtime' : 'polling';
       html.push(
-        '  <h2 class="section-title">Your Queues <span class="section-count indigo">' + queues.length + ' Active</span>' +
+        '  <h2 class="section-title"><span class="section-title-text">Your Queues</span><span class="section-meta"><span class="section-count indigo">' + queues.length + ' Active</span>' +
         '<span class="sync-pill sync-pill--' + pillMode + '">' +
         (pillMode === 'realtime'
           ? (
@@ -552,7 +566,7 @@
               '</span>'
             )
           : icon('clock', 12) + ' Polling') +
-        '</span>' +
+        '</span></span>' +
         '</h2>'
       );
       html.push('  <div class="queue-cards">');
@@ -619,7 +633,7 @@
           c.push('  <div>');
           c.push('    <strong>You\'re Invited!</strong>');
           if ((q.invite_attempts || 0) > 0) {
-            c.push('    <p>Attempt ' + (q.invite_attempts || 0) + ' / 3 — <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
+            c.push('    <p>Attempt #' + (q.invite_attempts || 0) + ' — <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
           } else {
             c.push('    <p>Add the host and tap the button below. <span class="countdown" data-invited="' + escapeHtml(q.invited_at || '') + '">' + secsLeft + 's</span> remaining.</p>');
           }
@@ -651,7 +665,11 @@
         c.push('  <img src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(bossName) + '">');
         c.push('  <div class="queue-card-hinfo">');
         c.push('    <h3>' + escapeHtml(bossName) + '</h3>');
-        if (joinedTime) c.push('    <p>Joined ' + escapeHtml(joinedTime) + '</p>');
+        c.push('    <div class="queue-card-meta-row">');
+        c.push('      <span class="role-tag role-joiner">' + icon('user', 11) + ' Joining</span>');
+        if (raidId) c.push('      <span class="lobby-id-tag">Lobby #' + escapeHtml(String(raidId).slice(0, 8).toUpperCase()) + '</span>');
+        if (joinedTime) c.push('      <span class="queue-card-joined">Joined ' + escapeHtml(joinedTime) + '</span>');
+        c.push('    </div>');
         c.push('  </div>');
         if (showVipHeaderCrown || showLobbyIcon || showGetReadyIcon) {
           c.push('  <div class="queue-card-icons">');
@@ -790,7 +808,8 @@
           escapeHtml: escapeHtml,
           getTrainerDisplayName: getTrainerDisplayName,
           renderTrainerMeta: renderTrainerMeta,
-          QueueFSM: deps.QueueFSM
+          QueueFSM: deps.QueueFSM,
+          capacity: (raid && raid.capacity) || ((state.appConfig || {}).host_capacity_free) || 5
         }));
 
         if ((q.status === 'queued' && hostFriendCode) || q.status === 'invited' || q.status === 'confirmed') {

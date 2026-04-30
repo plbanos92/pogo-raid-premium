@@ -99,7 +99,7 @@
            }).join(""),
       '    </div>',
       '    <div class="plan-price">' + escapeHtml(darkPrice) + '<span class="plan-price-sub">' + escapeHtml(darkPricePeriod) + '</span></div>',
-      '    <button class="btn-dark-unlock ' + (darkOwned ? 'is-owned' : 'not-owned') + '" id="darkUnlockBtn"' + (isVip ? ' disabled' : '') + '>' + (isVip ? 'Included with VIP' : (hasDarkUnlock ? 'Remove Dark Mode' : 'Buy Dark Mode')) + '</button>',
+      '    <button class="btn-dark-unlock ' + (darkOwned ? 'is-owned' : 'not-owned') + '" id="darkUnlockBtn"' + (isVip ? ' disabled' : '') + (hasDarkUnlock && !isVip ? ' title="Click to remove Dark Mode unlock"' : '') + '>' + (isVip ? 'Included with VIP' : (hasDarkUnlock ? 'Dark Mode Unlocked' : 'Buy Dark Mode')) + '</button>',
       '  </div>',
 
       '  <div class="plan-card free-plan">',
