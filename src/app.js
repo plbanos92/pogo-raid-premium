@@ -495,8 +495,19 @@
 
   // Called by AppRealtime IIFE → window.App.handleRealtimeEvent() on WS change event.
   // Debounce has already fired in the IIFE by the time this is called.
+  //
+  // If a refresh is already in flight, set a pending flag so we re-fire as soon as
+  // it completes. Otherwise the event silently coalesces with the in-flight call,
+  // which started BEFORE the row was updated — the joiner never sees the change
+  // until the next poll tick. This is the root cause of the "invite countdown
+  // stuck at 0 until poll" bug.
+  var _realtimePending = false;
   function handleRealtimeEvent() {
-    if (_refreshInFlight) return;
+    if (_refreshInFlight) {
+      _realtimePending = true;
+      SessionAudit.track('realtime', 'realtime.push_queued', {}, false);
+      return;
+    }
     SessionAudit.track('realtime', 'realtime.push_received', {}, false);
     refreshData();
   }
@@ -582,6 +593,28 @@
       try { setMessage("Connection issue. Retrying...", "error"); } catch (_) {}
       return;
     }
+    // Token is expired — attempt a silent refresh before forcing logout.
+    var storedRefreshToken = (store.getState().config || {}).refreshToken;
+    if (storedRefreshToken) {
+      var refreshApi = getApi();
+      refreshApi.refreshSession(storedRefreshToken).then(function (res) {
+        var newToken = res && (res.access_token || (res.session && res.session.access_token));
+        var newRefresh = res && (res.refresh_token || (res.session && res.session.refresh_token));
+        if (!newToken) throw new Error('no token in refresh response');
+        var cfg = Object.assign({}, store.getState().config, { token: newToken, refreshToken: newRefresh || storedRefreshToken });
+        global.AppConfig.saveSession({ token: newToken, userId: cfg.userId, refreshToken: newRefresh || storedRefreshToken });
+        store.setState({ config: cfg });
+        console.log('[Auth] Token silently refreshed.');
+      }).catch(function () {
+        // Refresh failed — proceed with full logout.
+        _doExpireSession();
+      });
+      return;
+    }
+    _doExpireSession();
+  }
+
+  function _doExpireSession() {
     sessionMachine.transition(SessionFSM.SESSION_STATE.SESSION_EXPIRED);
     SessionAudit.track('error', 'error.api_401', { triggered_from: 'handleSessionExpiry' }, true);
     SessionAudit.track('session', 'session.closed', { reason: 'session_expiry' }, false);
@@ -595,7 +628,7 @@
     profileEditMode = false;
     closeDrawer();
     store.setState({
-      config: Object.assign({}, store.getState().config, { token: "", userId: "" }),
+      config: Object.assign({}, store.getState().config, { token: "", userId: "", refreshToken: "" }),
       view: "account",
       queues: [],
       conflicts: [],
@@ -686,8 +719,11 @@
           status: err && err.status
         }, false);
       })
-        .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); })
-        .then(function () { return api.touchHostActivity(h.id).catch(function () {}); });
+        .then(function () { return api.checkHostInactivity(h.id).catch(function () {}); });
+      // NOTE: do NOT call touchHostActivity here. last_host_action_at must reflect
+      // actual host UI actions (invite/confirm/start/etc.) so the inactivity
+      // countdown drains correctly. Auto-touching every poll tick made the timer
+      // reset on every refresh and the lobby would never time out.
     });
     return Promise.all(tasks).then(function () {
       var hasEggHost = hosts.some(function (h) { return h.status === 'egg'; });
@@ -1199,19 +1235,48 @@
           var prevQ = prevQueues.find(function (p) { return p.id === q.id; });
           if (!prevQ) return;
 
+          var raidIdForAudit = (Array.isArray(q.raids) ? (q.raids[0] && q.raids[0].id) : (q.raids && q.raids.id)) || q.raid_id || null;
+
+          // Picked from queue to join a lobby (queued → invited, first invite of this cycle).
+          if (prevQ.status === 'queued' && q.status === 'invited') {
+            SessionAudit.track('queue', 'queue.invited_from_queue', {
+              queue_id: q.id,
+              raid_id: raidIdForAudit,
+              attempt: q.invite_attempts || 1,
+              position_at_invite: prevQ.position || null
+            }, true);
+          }
+
           // Auto-reinvite toast
           if (q.status === 'invited' && (q.invite_attempts || 0) > 0 && q.invited_at !== prevQ.invited_at) { // TODO: Phase 5 - use QueueFSM
             showToast("You've been automatically re-invited — you still have a spot! (Attempt " + (q.invite_attempts || 0) + " / 3)", 'info');
+            SessionAudit.track('queue', 'queue.reinvited', {
+              queue_id: q.id,
+              raid_id: raidIdForAudit,
+              attempt: q.invite_attempts || 0
+            }, true);
           }
 
-          // Cap-hit toast
+          // Cap-hit toast — invite window expired (kicked back to queue from invited)
           if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) >= 3) { // TODO: Phase 5 - use QueueFSM
             showToast("Invite window expired — you're back in queue at your original position.", 'warning');
+            SessionAudit.track('queue', 'queue.invite_expired_returned', {
+              queue_id: q.id,
+              raid_id: raidIdForAudit,
+              attempts: q.invite_attempts || 0,
+              reason: 'cap_hit'
+            }, true);
           }
 
-          // Lobby full toast
+          // Lobby full toast — returned to queue mid-cycle
           if (prevQ.status === 'invited' && q.status === 'queued' && (q.invite_attempts || 0) < 3) { // TODO: Phase 5 - use QueueFSM
             showToast("The lobby is full — you've been returned to the queue.", 'info');
+            SessionAudit.track('queue', 'queue.invite_expired_returned', {
+              queue_id: q.id,
+              raid_id: raidIdForAudit,
+              attempts: q.invite_attempts || 0,
+              reason: 'lobby_full_or_timeout'
+            }, true);
           }
         });
 
@@ -1266,6 +1331,12 @@
       .finally(function () {
         setLoading(false);
         _refreshInFlight = false;
+        // Re-fire if a realtime push arrived during this refresh — see handleRealtimeEvent.
+        if (_realtimePending) {
+          _realtimePending = false;
+          SessionAudit.track('realtime', 'realtime.push_replayed', {}, false);
+          refreshData();
+        }
       });
   }
 
@@ -1540,11 +1611,12 @@
           return;
         }
         var token = res && (res.access_token || (res.session && res.session.access_token));
+        var refreshToken = res && (res.refresh_token || (res.session && res.session.refresh_token));
         var user = res && (res.user || (res.session && res.session.user));
         if (!token || !user || !user.id) throw new Error("Unexpected response — no session returned. Please try again.");
         console.log('[Auth] Signed in — userId:', user.id);
-        var cfg = Object.assign({}, store.getState().config, { token: token, userId: user.id });
-        global.AppConfig.saveSession({ token: token, userId: user.id });
+        var cfg = Object.assign({}, store.getState().config, { token: token, userId: user.id, refreshToken: refreshToken || '' });
+        global.AppConfig.saveSession({ token: token, userId: user.id, refreshToken: refreshToken || '' });
         formPersist.clear('authForm');
         store.setState({ config: cfg, authMode: "signin", pendingConfirmation: null });
         showToast(mode === "signup" ? "Account created! Welcome aboard." : "You're signed in. Welcome back!", "success");
@@ -2594,6 +2666,11 @@
 
     store.subscribe(function (state) {
       try { render(state); } catch (err) { console.error('[RaidSync] render failed:', err); }
+      // Recompute countdown spans after every render so the displayed seconds
+      // always match the freshly fetched invited_at / inactivity timestamp,
+      // independent of the 1 s setInterval (which can be throttled in
+      // background tabs).
+      try { updateCountdowns(); } catch (err) { /* no-op */ }
     });
     safeInit('initAccountActions', initAccountActions);
     safeInit('initNavigation', initNavigation);
@@ -2831,16 +2908,33 @@
       }, interval);
     }
 
+    // Tracks data-invited values that have already triggered a zero-fallback refresh,
+    // so we only fire one refresh per invite cycle even if the timer keeps ticking at 0.
+    var _invitedZeroFiredFor = Object.create(null);
     function updateCountdowns() {
       var inviteWindowSeconds = (store.getState().appConfig || {}).invite_window_seconds || 60;
       var els = document.querySelectorAll(".countdown[data-invited]");
+      var triggerZeroRefresh = false;
       els.forEach(function (el) {
         var invitedAt = el.getAttribute("data-invited");
         if (!invitedAt) return;
         var elapsed = Math.floor((Date.now() - new Date(invitedAt).getTime()) / 1000);
         var secsLeft = Math.max(0, inviteWindowSeconds - elapsed);
         el.textContent = secsLeft + "s";
+        // Fallback: if the countdown hits 0 and we haven't already requested a refresh
+        // for this specific invited_at value, do so. Covers the case where the host's
+        // expire_stale_invites maintenance call hasn't fired yet, or where the realtime
+        // UPDATE event was missed. Idempotent — keyed by invited_at so it only fires once
+        // per invite cycle.
+        if (secsLeft === 0 && !_invitedZeroFiredFor[invitedAt]) {
+          _invitedZeroFiredFor[invitedAt] = true;
+          triggerZeroRefresh = true;
+        }
       });
+      if (triggerZeroRefresh && !_refreshInFlight) {
+        SessionAudit.track('data', 'invite.countdown_zero_refresh', {}, false);
+        refreshData();
+      }
 
       // Tick host inactivity countdown spans
       var inactEls = document.querySelectorAll(".countdown[data-inactivity-start]");
@@ -2853,8 +2947,14 @@
       });
     }
 
-    // Tick countdowns every second (lightweight, no network)
+    // Tick countdowns every second (lightweight, no network).
+    // Browsers throttle setInterval in background tabs (≥ 1 minute), so we
+    // also retick on visibilitychange to immediately sync when the user
+    // refocuses the tab.
     setInterval(updateCountdowns, 1000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) updateCountdowns();
+    });
 
     SessionAudit.track('lifecycle', 'lifecycle.page_load', null, false);
 

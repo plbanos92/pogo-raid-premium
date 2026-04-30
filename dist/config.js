@@ -1,7 +1,8 @@
 (function (global) {
   var STORAGE_KEYS = {
     token: "pogo.auth.token",
-    userId: "pogo.auth.userId"
+    userId: "pogo.auth.userId",
+    refreshToken: "pogo.auth.refreshToken"
   };
 
   function trim(value) {
@@ -11,7 +12,8 @@
   function getRuntimeConfig() {
     return {
       token: trim(localStorage.getItem(STORAGE_KEYS.token)),
-      userId: trim(localStorage.getItem(STORAGE_KEYS.userId))
+      userId: trim(localStorage.getItem(STORAGE_KEYS.userId)),
+      refreshToken: trim(localStorage.getItem(STORAGE_KEYS.refreshToken))
     };
   }
 
@@ -22,11 +24,15 @@
     if (session && session.userId) {
       localStorage.setItem(STORAGE_KEYS.userId, session.userId);
     }
+    if (session && session.refreshToken) {
+      localStorage.setItem(STORAGE_KEYS.refreshToken, session.refreshToken);
+    }
   }
 
   function clearSession() {
     localStorage.removeItem(STORAGE_KEYS.token);
     localStorage.removeItem(STORAGE_KEYS.userId);
+    localStorage.removeItem(STORAGE_KEYS.refreshToken);
   }
 
   global.AppConfig = {

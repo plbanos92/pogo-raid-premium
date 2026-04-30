@@ -69,6 +69,12 @@
           body: { email: email, password: password }
         });
       },
+      refreshSession: function (refreshToken) {
+        return request("/auth/v1/token?grant_type=refresh_token", {
+          method: "POST",
+          body: { refresh_token: refreshToken }
+        });
+      },
       listActiveRaids: function () {
         return request("/rest/v1/raids?is_active=eq.true&select=id,raid_boss_id,host_user_id,location_name,start_time,end_time,capacity,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url)&order=start_time.asc");
       },
@@ -81,7 +87,7 @@
         });
       },
       listMyQueues: function (userId) {
-        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,invite_attempts,boss_id,raids!left(raid_boss_id,location_name,start_time,end_time,friend_code,status,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
+        return request("/rest/v1/raid_queues?user_id=eq." + encodeURIComponent(userId) + "&status=in.(queued,invited,confirmed,raiding,done)&select=id,raid_id,user_id,status,position,is_vip,note,joined_at,invited_at,invite_attempts,boss_id,raids!left(raid_boss_id,location_name,start_time,end_time,friend_code,status,capacity,raid_bosses(id,name,tier,pokemon_id,image_url))&order=joined_at.asc");
       },
       listMyHostedRaids: function (userId) {
         return request("/rest/v1/raids?host_user_id=eq." + encodeURIComponent(userId) + "&is_active=eq.true&select=id,raid_boss_id,location_name,capacity,friend_code,created_at,last_host_action_at,host_finished_at,status,hatch_time,raid_bosses(id,name,tier,pokemon_id,image_url)&order=created_at.desc");
