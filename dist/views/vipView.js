@@ -24,14 +24,31 @@
     if (!wrap) return;
 
     var isVip = !!state.isVip;
+    var hasDarkUnlock = !!state.hasDarkUnlock;
+    var darkOwned = isVip || hasDarkUnlock; // VIP includes dark mode
     var glow = '<div class="glow"></div>';
     var cfg = state.appConfig || {};
+    var ent = state.entitlements || {};
+    var paymentsTestMode = ent.paymentsTestMode !== undefined
+      ? !!ent.paymentsTestMode
+      : (cfg.payments_test_mode !== false);
     var vipPrice = cfg.vip_price || '$4.99';
     var vipPricePeriod = cfg.vip_price_period || '/mo';
     var darkPrice = cfg.dark_unlock_price || '$5';
     var darkPricePeriod = cfg.dark_unlock_price_period || ' one-time';
-    var hasDarkUnlock = isVip; // VIP gets dark mode included; dark-only unlock is cosmetic client-side
     var freeCapacity = cfg.host_capacity_free || 5;
+
+    function fmtDate(iso) {
+      if (!iso) return '';
+      try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+      catch (_) { return ''; }
+    }
+    var vipStatusLine = '';
+    if (isVip && ent.vipCurrentPeriodEnd) {
+      vipStatusLine = ent.vipCancelAtPeriodEnd
+        ? '<div class="plan-status">Cancels on ' + escapeHtml(fmtDate(ent.vipCurrentPeriodEnd)) + '</div>'
+        : '<div class="plan-status">Renews on ' + escapeHtml(fmtDate(ent.vipCurrentPeriodEnd)) + '</div>';
+    }
     var features = Array.isArray(cfg.vip_features) ? cfg.vip_features : [
       { icon: 'zap', text: 'Priority Queue Placement' },
       { icon: 'star', text: 'Host up to 10 players' },
@@ -52,6 +69,7 @@
       '  <div class="vip-crown-wrap">' + icon("crown", 40) + '</div>',
       '  <h1 class="vip-page-title">RaidSync <span class="vip-gradient">VIP</span></h1>',
       '  <p class="vip-page-desc">Skip the lines, match faster, and dominate raids with exclusive features tailored for dedicated raiders.</p>',
+      paymentsTestMode ? '  <div class="vip-dev-badge" role="status">DEV MODE — entitlements toggle instantly without payment</div>' : '',
       '</div>',
 
       '<div class="vip-grid">',
@@ -67,6 +85,7 @@
            }).join(""),
       '    </div>',
       '    <div class="plan-price">' + escapeHtml(vipPrice) + '<span class="plan-price-sub">' + escapeHtml(vipPricePeriod) + '</span></div>',
+           vipStatusLine,
       '    <button class="btn-upgrade ' + (isVip ? 'is-vip' : 'not-vip') + '" id="vipUpgradeBtn"' + (isVip ? ' disabled' : '') + '>' + (isVip ? 'VIP Active' : 'Upgrade to VIP') + '</button>',
       '  </div>',
 
@@ -80,7 +99,7 @@
            }).join(""),
       '    </div>',
       '    <div class="plan-price">' + escapeHtml(darkPrice) + '<span class="plan-price-sub">' + escapeHtml(darkPricePeriod) + '</span></div>',
-      '    <button class="btn-dark-unlock ' + (hasDarkUnlock ? 'is-owned' : 'not-owned') + '" id="darkUnlockBtn"' + (hasDarkUnlock ? ' disabled' : '') + '>' + (hasDarkUnlock ? 'Included with VIP' : 'Buy Dark Mode') + '</button>',
+      '    <button class="btn-dark-unlock ' + (darkOwned ? 'is-owned' : 'not-owned') + '" id="darkUnlockBtn"' + (isVip ? ' disabled' : '') + '>' + (isVip ? 'Included with VIP' : (hasDarkUnlock ? 'Remove Dark Mode' : 'Buy Dark Mode')) + '</button>',
       '  </div>',
 
       '  <div class="plan-card free-plan">',
@@ -93,7 +112,13 @@
              }).join(""),
       '    </div>',
       '    <div class="plan-price">$0<span class="plan-price-sub">/mo</span></div>',
-      '    <button class="btn-downgrade" id="vipDowngradeBtn"' + (isVip ? '' : ' disabled') + '>' + (isVip ? 'Downgrade to Free' : 'Current Plan') + '</button>',
+      '    <button class="btn-downgrade" id="vipDowngradeBtn"' + (isVip ? '' : ' disabled') + '>' +
+            (!isVip
+              ? 'Current Plan'
+              : (paymentsTestMode
+                  ? 'Downgrade to Free'
+                  : (ent.vipCancelAtPeriodEnd ? 'Resume Subscription' : 'Cancel Subscription'))) +
+            '</button>',
       '  </div>',
 
       '</div>'

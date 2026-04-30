@@ -1902,6 +1902,19 @@ a { text-decoration: none; color: inherit; }
   font-size: 1.125rem; color: var(--slate-500); font-weight: 500;
   max-width: 36rem; margin: 1rem auto 0;
 }
+.vip-dev-badge {
+  display: inline-block; margin: 1rem auto 0;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--amber-700, #b45309);
+  background: var(--amber-50, #fffbeb);
+  border: 1px solid var(--amber-200, #fde68a);
+  border-radius: 9999px;
+}
+.plan-status {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.8125rem; color: var(--slate-500); font-weight: 500;
+}
 
 .vip-grid { display: grid; gap: 2rem; }
 @media (min-width: 768px) { .vip-grid { grid-template-columns: 1fr 1fr; } }

@@ -30,6 +30,95 @@ function corsHeaders(origin) {
   };
 }
 
+// ─── Payments webhook helpers ────────────────────────────────────
+// Each provider has its own signature scheme. We verify with constant-time
+// comparison, then normalize to our internal event shape consumed by
+// apply_provider_event() in Supabase.
+
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+async function hmacSha256Hex(secret, message) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  const bytes = new Uint8Array(sig);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+// Verify the provider signature and return the normalized event payload that
+// our apply_provider_event() RPC expects. Returns null on rejection.
+//
+// IMPORTANT: this is a skeleton — each provider branch must be filled in with
+// the real verification logic before the production cutover. Until then, the
+// branches all reject (return null) so no events get applied.
+async function verifyAndNormalize(provider, request, rawBody, env) {
+  switch (provider) {
+    case 'stripe': {
+      const sigHeader = request.headers.get('Stripe-Signature') || '';
+      const secret = env.STRIPE_WEBHOOK_SECRET;
+      if (!secret || !sigHeader) return null;
+      // Stripe signature: t=<ts>,v1=<sig>
+      const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
+      if (!parts.t || !parts.v1) return null;
+      const expected = await hmacSha256Hex(secret, parts.t + '.' + rawBody);
+      if (!timingSafeEqual(expected, parts.v1)) return null;
+
+      let evt;
+      try { evt = JSON.parse(rawBody); } catch { return null; }
+      // Caller is responsible for mapping evt.type → our normalized event_type
+      // and resolving customer→user_id (typically via metadata.user_id set at
+      // checkout-session creation time). Stub returns null until wired up.
+      // TODO(payments): implement Stripe → normalized mapping.
+      console.warn('[webhook] Stripe verified but mapping not yet implemented');
+      return null;
+    }
+
+    case 'revenuecat': {
+      // RevenueCat uses an Authorization: Bearer <token> shared secret.
+      const auth = request.headers.get('Authorization') || '';
+      const expected = 'Bearer ' + (env.REVENUECAT_WEBHOOK_TOKEN || '');
+      if (!env.REVENUECAT_WEBHOOK_TOKEN || !timingSafeEqual(auth, expected)) return null;
+      // TODO(payments): implement RevenueCat → normalized mapping.
+      console.warn('[webhook] RevenueCat verified but mapping not yet implemented');
+      return null;
+    }
+
+    case 'dev': {
+      // Local-only test webhook. Requires DEV_WEBHOOK_TOKEN secret AND
+      // payments_test_mode must be true in the DB (the RPC runs as
+      // service_role, so it bypasses payments_test_mode — we enforce here).
+      const auth = request.headers.get('Authorization') || '';
+      const expected = 'Bearer ' + (env.DEV_WEBHOOK_TOKEN || '');
+      if (!env.DEV_WEBHOOK_TOKEN || !timingSafeEqual(auth, expected)) return null;
+      try {
+        const evt = JSON.parse(rawBody);
+        // Validate required fields up front so the RPC doesn't have to.
+        if (!evt || !evt.event_id || !evt.event_type || !evt.user_id || !evt.plan) return null;
+        return evt;
+      } catch { return null; }
+    }
+
+    default:
+      return null;
+  }
+}
+
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -240,6 +329,59 @@ export default {
       } catch (err) {
         console.error('[API] /api/track error:', err && err.message);
         return new Response('', { status: 204, headers: corsHeaders(origin) }); // never let tracking errors break the page
+      }
+    }
+
+    // ─── Payments webhooks ───────────────────────────────────────
+    // /api/webhooks/<provider>  — provider POSTs raw event, we verify signature,
+    // normalize to our event shape, and forward to apply_provider_event() RPC
+    // with the service-role JWT. RPC is idempotent on event_id.
+    //
+    // No CORS — providers POST server-to-server. No Origin check (preflight
+    // already returned 204 above). Each provider branch is responsible for
+    // signature verification BEFORE we touch the DB.
+    {
+      const m = url.pathname.match(/^\/api\/webhooks\/([a-z0-9_-]+)$/i);
+      if (m && request.method === 'POST') {
+        const provider = m[1].toLowerCase();
+        if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+          console.error('[API] /api/webhooks: missing SUPABASE_SERVICE_ROLE_KEY secret');
+          return new Response('server not configured', { status: 500 });
+        }
+        try {
+          const rawBody = await request.text();
+          const normalized = await verifyAndNormalize(provider, request, rawBody, env);
+          if (!normalized) {
+            console.warn(`[API] /api/webhooks/${provider}: signature/payload rejected`);
+            return new Response('invalid signature', { status: 400 });
+          }
+
+          // Forward to apply_provider_event() with service-role auth.
+          const headers = new Headers();
+          headers.set('apikey', env.SUPABASE_SERVICE_ROLE_KEY);
+          headers.set('Authorization', 'Bearer ' + env.SUPABASE_SERVICE_ROLE_KEY);
+          headers.set('Content-Type', 'application/json');
+          const rpcResp = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/apply_provider_event', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ p_event: normalized }),
+          });
+          const rpcText = await rpcResp.text();
+          if (!rpcResp.ok) {
+            console.error(`[API] apply_provider_event failed: ${rpcResp.status} ${rpcText.slice(0, 200)}`);
+            // Return 500 so the provider retries the webhook.
+            return new Response('rpc failed', { status: 500 });
+          }
+          // 200 with empty body is the conventional "ack" providers expect.
+          console.log(`[API] webhook ${provider} ${normalized.event_type} applied (event_id=${normalized.event_id})`);
+          return new Response(rpcText || '{}', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (err) {
+          console.error(`[API] /api/webhooks/${provider} error:`, err && err.message);
+          return new Response('webhook error', { status: 500 });
+        }
       }
     }
 

@@ -18,6 +18,8 @@
     syncCursor: null,
     view: "home",
     isVip: false,
+    hasDarkUnlock: false,
+    entitlements: null,
     isAdmin: false,
     searchTerm: "",
     hostSuccess: false,
@@ -331,16 +333,20 @@
   // Apply any saved theme from state on boot (keeps runtime in sync with pre-paint script).
   try { applyTheme(store.getState().theme || 'light'); } catch (_) { /* ignore */ }
 
-  // VIP-gate enforcement for theme. We must NOT revert theme on boot — the
-  // store starts with isVip:false until refreshData resolves the real flag,
-  // and reverting eagerly would wipe a legitimate VIP's dark-mode choice on
-  // every refresh. Instead, we only revert on an explicit VIP→non-VIP edge,
-  // after the first time isVip has been set to true in this session.
-  var _vipWasTrueOnce = false;
+  // Dark-mode gate enforcement. We must NOT revert theme on boot — the store
+  // starts with isVip:false / hasDarkUnlock:false until refreshData resolves
+  // the real entitlements, and reverting eagerly would wipe a legitimate
+  // dark-mode choice on every refresh. Instead, we only revert on an explicit
+  // "had-dark-access → no-dark-access" edge, after the first time it has been
+  // true in this session.
+  function _hasDarkAccess(state) {
+    return !!(state && (state.isVip || state.hasDarkUnlock));
+  }
+  var _darkAccessWasTrueOnce = false;
   store.subscribe(function (state) {
-    if (state.isVip) { _vipWasTrueOnce = true; return; }
-    // Only act if the user *was* VIP earlier in this session and just lost it.
-    if (_vipWasTrueOnce && (state.theme || 'light') !== 'light') {
+    if (_hasDarkAccess(state)) { _darkAccessWasTrueOnce = true; return; }
+    // Only act if the user *had* dark access earlier in this session and just lost it.
+    if (_darkAccessWasTrueOnce && (state.theme || 'light') !== 'light') {
       try { localStorage.setItem('rs_theme', 'light'); } catch (_) { /* ignore */ }
       applyTheme('light');
       setTimeout(function () { store.setState({ theme: 'light' }); }, 0);
@@ -546,7 +552,36 @@
   window.App.handleRealtimeEvent = handleRealtimeEvent;
   window.App.handleRealtimeDemotion = handleRealtimeDemotion;
 
+  // Decode the JWT exp claim to verify the token has actually expired.
+  // Returns true only when we can prove expiry; on parse failure or missing exp
+  // we return false (i.e. don't punish the user — assume the 401 was transient).
+  function isJwtExpired() {
+    try {
+      var token = (store.getState().config || {}).token;
+      if (!token) return true; // no token == effectively expired
+      var parts = token.split('.');
+      if (parts.length !== 3) return false;
+      // base64url -> base64
+      var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      var payload = JSON.parse(atob(b64));
+      if (!payload || typeof payload.exp !== 'number') return false;
+      // 30-second grace window for client clock skew.
+      return (Date.now() / 1000) > (payload.exp + 30);
+    } catch (_) {
+      return false;
+    }
+  }
+
   function handleSessionExpiry() {
+    // Defense in depth: a 401 with a still-valid JWT is almost certainly a
+    // transient Supabase/network blip, not a real expiry. Don't sign the user
+    // out — log it and let the next request/poll retry naturally.
+    if (!isJwtExpired()) {
+      SessionAudit.track('error', 'error.transient_401', { triggered_from: 'handleSessionExpiry' }, true);
+      try { setMessage("Connection issue. Retrying...", "error"); } catch (_) {}
+      return;
+    }
     sessionMachine.transition(SessionFSM.SESSION_STATE.SESSION_EXPIRED);
     SessionAudit.track('error', 'error.api_401', { triggered_from: 'handleSessionExpiry' }, true);
     SessionAudit.track('session', 'session.closed', { reason: 'session_expiry' }, false);
@@ -566,6 +601,8 @@
       conflicts: [],
       hosts: [],
       isVip: false,
+      hasDarkUnlock: false,
+      entitlements: null,
       isAdmin: false,
       authMode: "signin",
       pendingConfirmation: null,
@@ -1047,7 +1084,7 @@
     var raidBossesPromise = api.listRaidBosses().catch(rethrowIfExpired);
     var queuePromise = Promise.resolve([]);
     var hostPromise = Promise.resolve([]);
-    var vipPromise = Promise.resolve(false);
+    var entitlementsPromise = Promise.resolve(null);
     var profilePromise = Promise.resolve(null);
     var adminCheckPromise = Promise.resolve(false);
     var accountStatsPromise = Promise.resolve(null);
@@ -1059,11 +1096,9 @@
     if (state.config.userId && state.config.token) {
       queuePromise = api.listMyQueues(state.config.userId).catch(rethrowIfExpired);
       hostPromise = api.listMyHostedRaids(state.config.userId).catch(rethrowIfExpired);
-      vipPromise = api.getVipStatus(state.config.userId).then(function (rows) {
-        return Array.isArray(rows) && rows.length > 0;
-      }).catch(function (err) {
+      entitlementsPromise = api.getMyEntitlements().catch(function (err) {
         if (err && err.status === 401) throw err;
-        return false;
+        return null;
       });
       profilePromise = loadProfileWithFallback(api, state.config.userId);
       adminCheckPromise = api.checkIsAdmin(state.config.userId).catch(function () { return false; });
@@ -1071,11 +1106,13 @@
       slotStatsPromise = api.getRealtimeSlotStats().catch(function () { return null; });
     }
 
-    return Promise.all([raidsPromise, raidBossesPromise, queuePromise, hostPromise, vipPromise, profilePromise, adminCheckPromise, accountStatsPromise, appConfigPromise, slotStatsPromise])
+    return Promise.all([raidsPromise, raidBossesPromise, queuePromise, hostPromise, entitlementsPromise, profilePromise, adminCheckPromise, accountStatsPromise, appConfigPromise, slotStatsPromise])
       .then(function (res) {
         var raids = res[0] || [], raidBosses = res[1] || [];
         var hosts = res[3] || [];
-        var isVip = !!res[4];
+        var entitlements = res[4] || null;
+        var isVip = !!(entitlements && entitlements.isVip);
+        var hasDarkUnlock = !!(entitlements && entitlements.hasDarkUnlock);
         var profile = res[5] || null;
         var isAdmin = !!res[6];
         var accountStats = res[7] || null;
@@ -1092,11 +1129,11 @@
 
             var bossesPromise = api.listBossQueueStats().then(function (bosses) {
               return { raids:raids, raidBosses:raidBosses, queues:nextQueues, hosts:hosts,
-                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: Array.isArray(bosses) ? bosses : [] };
+                       conflicts:conflicts, isVip:isVip, hasDarkUnlock:hasDarkUnlock, entitlements:entitlements, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: Array.isArray(bosses) ? bosses : [] };
             }).catch(function (err) {
               if (err && err.status === 401) throw err;
               return { raids:raids, raidBosses:raidBosses, queues:nextQueues, hosts:hosts,
-                       conflicts:conflicts, isVip:isVip, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: buildBossesFromRaids(raids) };
+                       conflicts:conflicts, isVip:isVip, hasDarkUnlock:hasDarkUnlock, entitlements:entitlements, isAdmin:isAdmin, profile:profile, accountStats:accountStats, appConfig:appConfig, realtimeSlotStats:slotStats, bosses: buildBossesFromRaids(raids) };
             });
 
             if (!isAdmin) return bossesPromise;
@@ -1125,10 +1162,12 @@
           var _cacheUserId = store.getState().config.userId;
           if (_cacheUserId) {
             LocalCache.saveUser(_cacheUserId, {
-              isVip:        payload.isVip        || false,
-              isAdmin:      payload.isAdmin       || false,
-              profile:      payload.profile       || null,
-              accountStats: payload.accountStats  || null
+              isVip:         payload.isVip         || false,
+              hasDarkUnlock: payload.hasDarkUnlock || false,
+              entitlements:  payload.entitlements  || null,
+              isAdmin:       payload.isAdmin       || false,
+              profile:       payload.profile       || null,
+              accountStats:  payload.accountStats  || null
             });
           }
           LocalCache.saveGlobal({
@@ -1237,6 +1276,8 @@
     var wrap = qs("accountContent");
 
     wrap.addEventListener("click", async function (e) {
+      // Edit profile button → enter edit mode
+      if (e.target.closest("#editProfileBtn")) {
         profileEditMode = true;
         formPersist.save('app', 'profileEditMode', 'true');
         renderAccountView(store.getState());
@@ -1281,12 +1322,12 @@
         return;
       }
 
-      // Theme toggle (VIP-gated dark mode)
+      // Theme toggle (dark mode gated by VIP or one-time dark unlock)
       var themeBtn = e.target.closest('[data-theme-btn]');
       if (themeBtn) {
         var nextTheme = themeBtn.getAttribute('data-theme-btn');
-        if (!store.getState().isVip && nextTheme !== 'light') {
-          // Shouldn't be reachable (UI hides toggle for non-VIPs), but guard anyway.
+        if (!_hasDarkAccess(store.getState()) && nextTheme !== 'light') {
+          // Shouldn't be reachable (UI hides toggle without dark access), but guard anyway.
           switchView(QueueFSM.VIEW_KEY.VIP);
           return;
         }
@@ -1364,7 +1405,7 @@
         store.setState({
           config: Object.assign({}, store.getState().config, { token: "", userId: "" }),
           view: "account",
-          queues: [], conflicts: [], hosts: [], isVip: false, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, adminUsers: [], adminUsersPage: 0, adminUsersTotal: 0, adminUsersPageSize: 20, adminUsersLoading: false, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
+          queues: [], conflicts: [], hosts: [], isVip: false, hasDarkUnlock: false, entitlements: null, isAdmin: false, authMode: "signin", pendingConfirmation: null, profile: null, snapshots: {}, openLobbyQrs: {}, lobbyInfoOpen: {}, adminBosses: [], adminEditingId: null, adminUsers: [], adminUsersPage: 0, adminUsersTotal: 0, adminUsersPageSize: 20, adminUsersLoading: false, syncCursor: null, managingLobby: null, lobbyQueues: [], realtimeMode: 'polling', realtimeRetrying: false
         });
         sessionMachine.transition(SessionFSM.SESSION_STATE.UNAUTHENTICATED);
         setTimeout(function () { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 0);
@@ -2046,26 +2087,82 @@
       var darkBtn = e.target.closest("#darkUnlockBtn");
       if (darkBtn) {
         if (!ensureAuth()) return;
-        setMessage("Checkout coming soon — email support to pre-purchase.", "ok");
-        SessionAudit.track('account', 'account.dark_unlock_click', null, true);
+        var st = store.getState();
+        // Skip if already included with active VIP — Dark Mode is bundled.
+        if (st.isVip) {
+          setMessage("Dark Mode is included with your VIP subscription.", "ok");
+          return;
+        }
+        var owned = !!st.hasDarkUnlock;
+        var ent = st.entitlements || {};
+        var cfg = st.appConfig || {};
+        var testMode = ent.paymentsTestMode !== false && cfg.payments_test_mode !== false;
+        // Production: redirect to hosted checkout when not yet owned.
+        if (!testMode && !owned) {
+          if (cfg.dark_unlock_checkout_url) {
+            SessionAudit.track('account', 'account.dark_unlock_checkout_redirect', null, true);
+            window.location.assign(cfg.dark_unlock_checkout_url);
+          } else {
+            setMessage("Checkout coming soon — email support to pre-purchase.", "ok");
+            SessionAudit.track('account', 'account.dark_unlock_click', null, true);
+          }
+          return;
+        }
+        // Dev mode (or revoking an existing unlock): toggle via RPC.
+        var api = getApi();
+        setLoading(true);
+        api.devSetEntitlement('dark_unlock', !owned).then(function () {
+          SessionAudit.track('account', owned ? 'account.dark_unlock_revoke' : 'account.dark_unlock_grant', null, true);
+          setMessage(owned ? "Dark Mode unlock removed" : "Dark Mode unlocked", "ok");
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          setMessage("Dark Mode update failed: " + err.message, "error");
+        }).finally(function () { setLoading(false); });
         return;
       }
       var target = e.target.closest("#vipUpgradeBtn") || e.target.closest("#vipDowngradeBtn");
       if (!target) return;
       if (!ensureAuth()) return;
-      var state = store.getState();
       var api = getApi();
-      setLoading(true);
-      var action = target.id === "vipUpgradeBtn"
-        ? api.activateVip(state.config.userId)
-        : api.deactivateVip(state.config.userId);
-      Promise.resolve(action).then(function () {
-        if (target.id === 'vipUpgradeBtn') {
-          SessionAudit.track('account', 'account.vip_activate', null, true);
+      var activate = target.id === "vipUpgradeBtn";
+      var stateNow = store.getState();
+      var entNow = stateNow.entitlements || {};
+      var cfgNow = stateNow.appConfig || {};
+      var testModeNow = entNow.paymentsTestMode !== false && cfgNow.payments_test_mode !== false;
+      // Production upgrade: hosted checkout redirect.
+      if (!testModeNow && activate) {
+        if (cfgNow.vip_checkout_url) {
+          SessionAudit.track('account', 'account.vip_checkout_redirect', null, true);
+          window.location.assign(cfgNow.vip_checkout_url);
         } else {
-          SessionAudit.track('account', 'account.vip_deactivate', null, true);
+          setMessage("Checkout coming soon.", "ok");
         }
-        setMessage(target.id === "vipUpgradeBtn" ? "VIP activated" : "VIP cancelled", "ok");
+        return;
+      }
+      // Production downgrade / cancel: toggle cancel_at_period_end via RPC.
+      // VIP stays active until the provider's renewal cycle ends.
+      if (!testModeNow && !activate) {
+        var nextCancel = !entNow.vipCancelAtPeriodEnd;
+        setLoading(true);
+        api.requestCancelSubscription('vip_monthly', nextCancel).then(function () {
+          SessionAudit.track('account', nextCancel ? 'account.vip_cancel_request' : 'account.vip_resume_request', null, true);
+          setMessage(nextCancel ? "Subscription will end at period close." : "Subscription resumed.", "ok");
+          return refreshData();
+        }).catch(function (err) {
+          if (err && err.status === 401) { handleSessionExpiry(); return; }
+          setMessage("Subscription update failed: " + err.message, "error");
+        }).finally(function () { setLoading(false); });
+        return;
+      }
+      setLoading(true);
+      // Dev: simulate a 30-day billing period so the UI can show a "renews on" date.
+      var devPeriodEnd = activate
+        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+      api.devSetEntitlement('vip_monthly', activate, { periodEnd: devPeriodEnd }).then(function () {
+        SessionAudit.track('account', activate ? 'account.vip_activate' : 'account.vip_deactivate', null, true);
+        setMessage(activate ? "VIP activated" : "VIP cancelled", "ok");
         return refreshData();
       }).catch(function (err) {
         if (err && err.status === 401) { handleSessionExpiry(); return; }
@@ -2786,7 +2883,9 @@
         var _cachedUser = LocalCache.loadUser(store.getState().config.userId, 86400000); // 24h TTL
         if (_cachedUser) {
           store.setState({
-            isVip:         _cachedUser.isVip        || false,
+            isVip:         _cachedUser.isVip         || false,
+            hasDarkUnlock: _cachedUser.hasDarkUnlock || false,
+            entitlements:  _cachedUser.entitlements  || null,
             isAdmin:       _cachedUser.isAdmin       || false,
             profile:       _cachedUser.profile       || null,
             accountStats:  _cachedUser.accountStats  || null

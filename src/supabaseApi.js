@@ -131,34 +131,55 @@
           });
         });
       },
-      getVipStatus: function (userId) {
-        return request("/rest/v1/subscriptions?user_id=eq." + encodeURIComponent(userId) + "&is_vip=eq.true&status=eq.active&select=id&limit=1");
-      },
-      activateVip: function (userId) {
-        return request("/rest/v1/subscriptions", {
+      // Entitlements (Phase 1): single source of truth via SECURITY DEFINER RPC.
+      // Replaces direct queries on the subscriptions table — clients can no
+      // longer self-grant is_vip via PostgREST.
+      getMyEntitlements: function () {
+        return request("/rest/v1/rpc/get_my_entitlements", {
           method: "POST",
-          headers: {
-            Prefer: "return=representation"
-          },
-          body: {
-            user_id: userId,
-            provider: "manual",
-            status: "active",
-            is_vip: true,
-            starts_at: new Date().toISOString()
-          }
+          body: {}
+        }).then(function (rows) {
+          var row = (Array.isArray(rows) ? rows[0] : rows) || {};
+          return {
+            isVip:                  !!row.is_vip,
+            hasDarkUnlock:          !!row.has_dark_unlock,
+            vipPlan:                row.vip_plan || null,
+            vipStatus:              row.vip_status || null,
+            vipCurrentPeriodEnd:    row.vip_current_period_end || null,
+            vipCancelAtPeriodEnd:   !!row.vip_cancel_at_period_end,
+            darkUnlockAcquiredAt:   row.dark_unlock_acquired_at || null,
+            paymentsTestMode:       row.payments_test_mode !== false
+          };
         });
       },
-      deactivateVip: function (userId) {
-        return request("/rest/v1/subscriptions?user_id=eq." + encodeURIComponent(userId) + "&is_vip=eq.true&status=eq.active", {
-          method: "PATCH",
-          headers: {
-            Prefer: "return=representation"
-          },
-          body: {
-            status: "cancelled"
-          }
+      devSetEntitlement: function (plan, active, opts) {
+        opts = opts || {};
+        var body = { p_plan: plan, p_active: !!active };
+        if (opts.periodEnd) body.p_period_end = opts.periodEnd;
+        if (typeof opts.cancelAtPeriodEnd === 'boolean') body.p_cancel_at_period_end = opts.cancelAtPeriodEnd;
+        return request("/rest/v1/rpc/dev_set_entitlement", {
+          method: "POST",
+          body: body
         });
+      },
+      requestCancelSubscription: function (plan, cancel) {
+        return request("/rest/v1/rpc/request_cancel_subscription", {
+          method: "POST",
+          body: { p_plan: plan, p_cancel: cancel !== false }
+        });
+      },
+      // Back-compat aliases — kept so older call sites keep working until
+      // they're migrated to entitlements.* in a follow-up pass.
+      getVipStatus: function (_userId) {
+        return this.getMyEntitlements().then(function (ent) {
+          return ent.isVip ? [{ id: 'entitlement' }] : [];
+        });
+      },
+      activateVip: function (_userId) {
+        return this.devSetEntitlement('vip_monthly', true);
+      },
+      deactivateVip: function (_userId) {
+        return this.devSetEntitlement('vip_monthly', false);
       },
       deleteQueueEntry: function (queueId) {
         return request("/rest/v1/raid_queues?id=eq." + encodeURIComponent(queueId), {
