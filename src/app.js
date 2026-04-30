@@ -73,6 +73,29 @@
     FORM_PERSIST_PREFIX: 'rsp:'
   };
 
+  /* ─── State-change audit instrumentation ───────────────────────
+     Wraps store.setState so every patch is automatically forwarded
+     to SessionAudit as a 'state.change' event.  Only the changed
+     key names are recorded (never values) except for a small
+     allow-list of non-sensitive scalar fields.                    */
+  var _STATE_SAFE_VALUE_KEYS = {
+    view: 1, realtimeMode: 1, adminTab: 1, authMode: 1,
+    theme: 1, loading: 1, hostSuccess: 1, realtimeRetrying: 1
+  };
+  (function _instrumentStore() {
+    var _orig = store.setState.bind(store);
+    store.setState = function (patch) {
+      _orig(patch);
+      if (!global.SessionAudit) return;
+      var keys = Object.keys(patch);
+      var values = {};
+      for (var i = 0; i < keys.length; i++) {
+        if (_STATE_SAFE_VALUE_KEYS[keys[i]]) values[keys[i]] = patch[keys[i]];
+      }
+      global.SessionAudit.track('state', 'state.change', { keys: keys, values: values }, false);
+    };
+  }());
+
     /* ═══════════════════════════════════════════════════════════════
       Globals & startup validation
       ═══════════════════════════════════════════════════════════════ */

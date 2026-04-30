@@ -109,18 +109,19 @@
     var cats = cfg.categories || {};
 
     var allCategories = [
-      { key: 'session',   label: 'Session',    locked: true },
-      { key: 'error',     label: 'Error',      locked: true },
-      { key: 'ui',        label: 'UI Clicks',  hint: 'High volume' },
-      { key: 'nav',       label: 'Navigation', hint: 'High volume' },
-      { key: 'data',      label: 'Data',       hint: 'High volume' },
-      { key: 'queue',     label: 'Queue' },
-      { key: 'host',      label: 'Host' },
-      { key: 'lifecycle', label: 'Lifecycle' },
-      { key: 'realtime',  label: 'Realtime' },
-      { key: 'realtime_debug', label: 'RT Debug', hint: 'Channel-level diagnostics' },
-      { key: 'account',   label: 'Account' },
-      { key: 'admin',     label: 'Admin' }
+      { key: 'session',        label: 'Session',        locked: true },
+      { key: 'error',          label: 'Error',          locked: true },
+      { key: 'ui',             label: 'UI Clicks',      hint: 'High volume' },
+      { key: 'nav',            label: 'Navigation',     hint: 'High volume' },
+      { key: 'state',          label: 'State Changes',  hint: 'High volume — every store update' },
+      { key: 'data',           label: 'Data',           hint: 'High volume' },
+      { key: 'queue',          label: 'Queue' },
+      { key: 'host',           label: 'Host' },
+      { key: 'lifecycle',      label: 'Lifecycle' },
+      { key: 'realtime',       label: 'Realtime' },
+      { key: 'realtime_debug', label: 'RT Debug',       hint: 'Channel-level diagnostics' },
+      { key: 'account',        label: 'Account' },
+      { key: 'admin',          label: 'Admin' }
     ];
 
     var catItems = allCategories.map(function (c) {
